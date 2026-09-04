@@ -1,0 +1,1834 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bullpen</title>
+<link href="./vendor/fonts.css" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f0a63a; --panel: rgba(30, 24, 22, .86); --line: #4a3a34; --text: #f3ede6; --muted: #c2b0a5;
+    --working: #4ade80; --idle: #60a5fa; --blocked: #fb923c; --done: #22c55e; --unknown: #9ca3af; --gold: #fbbf24;
+  }
+  * { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: rgba(251,191,36,.45) transparent; }
+  /* thin, translucent scrollbars that sit inside the panels instead of the native white gutter */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(251,191,36,.6); background-clip: padding-box; }
+  ::-webkit-scrollbar-corner { background: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.45 "IBM Plex Mono", ui-monospace, Menlo, monospace; overflow: hidden; }
+  #c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .hud { position: fixed; z-index: 2; pointer-events: none; }
+  .hud > * { pointer-events: auto; }
+  #top { top: 12px; left: 12px; right: 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .brand { font-family: "Press Start 2P", monospace; font-size: 12px; letter-spacing: 1px; background: var(--panel); border: 1px solid var(--line); padding: 10px 14px; border-radius: 8px; display: flex; align-items: center; gap: 10px; }
+  .brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--unknown); box-shadow: 0 0 8px currentColor; }
+  .brand .dot.on { background: var(--working); color: var(--working); }
+  .brand .dot.off { background: var(--blocked); color: var(--blocked); }
+  .brand small { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--muted); letter-spacing: 0; }
+  .stats { display: flex; gap: 6px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); padding: 8px 12px; border-radius: 8px; display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .stat b { font-size: 15px; }
+  .stat i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+  .btns { margin-left: auto; display: flex; gap: 6px; }
+  button { background: var(--panel); border: 1px solid var(--line); color: var(--text); padding: 8px 12px; border-radius: 8px; font: inherit; font-size: 12px; cursor: pointer; }
+  button:hover { border-color: #7a6258; }
+  button.active { border-color: var(--gold); color: var(--gold); }
+  #panel { top: 68px; right: 12px; bottom: 12px; width: 320px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: auto; padding: 8px; }
+  #panel.hidden { display: none; }
+  .ws { margin-bottom: 8px; }
+  .ws h3 { margin: 6px 6px 4px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 6px; }
+  .ws h3 .n { color: var(--text); }
+  .row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 7px 8px; border-radius: 7px; cursor: pointer; border: 1px solid transparent; }
+  .row > div { min-width: 0; }
+  .ws h3 { min-width: 0; }
+  .ws h3 .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row:hover { background: rgba(255,255,255,.06); }
+  .row.focused { border-color: rgba(251,191,36,.55); }
+  .row .st { width: 10px; height: 10px; border-radius: 50%; margin-top: 3px; }
+  .row .t { font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .s { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .k { font-size: 10px; color: var(--muted); text-align: right; }
+  .row .k b { display: block; color: var(--text); font-size: 10px; text-transform: uppercase; }
+  .row .rn { display: block; margin: 4px 0 0 auto; padding: 0 7px; font-size: 13px; line-height: 18px; border-radius: 5px; opacity: .45; }
+  .row:hover .rn { opacity: .85; }
+  .row .rn:hover, .row .rn.on { opacity: 1; border-color: var(--gold); color: var(--gold); }
+  .ws h3 .rn { margin: 0 0 0 auto; opacity: .4; }
+  .ws:hover h3 .rn { opacity: .8; }
+  #menu { position: fixed; z-index: 7; min-width: 210px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 5px; display: none; box-shadow: 0 14px 40px rgba(0,0,0,.45); backdrop-filter: blur(6px); }
+  #menu.open { display: block; }
+  #menu .mh { padding: 6px 9px 7px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--line); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #menu .mh b { color: var(--text); font-size: 12px; }
+  #menu button { display: flex; width: 100%; align-items: center; gap: 9px; background: none; border: 0; padding: 7px 9px; border-radius: 7px; font-size: 12px; color: var(--text); text-align: left; }
+  #menu button:hover { background: rgba(255,255,255,.07); }
+  #menu button .ic { width: 14px; text-align: center; opacity: .7; flex: none; }
+  #menu button .k { margin-left: auto; font-size: 10px; color: var(--muted); }
+  #menu button.danger { color: var(--blocked); }
+  #menu button.danger:hover { background: rgba(251,146,60,.13); }
+  #menu .sep { height: 1px; background: var(--line); margin: 4px 2px; }
+  .st.working { background: var(--working); box-shadow: 0 0 8px var(--working); }
+  .st.idle { background: var(--idle); }
+  .st.blocked { background: var(--blocked); box-shadow: 0 0 8px var(--blocked); animation: blink 1s infinite; }
+  .st.done { background: var(--done); }
+  .st.unknown { background: var(--unknown); }
+  @keyframes blink { 50% { opacity: .35; } }
+  #term { position: fixed; z-index: 4; left: 50%; top: 50%; transform: translate(-50%,-50%); width: min(900px, 92vw); height: min(560px, 80vh); background: #14100f; border: 1px solid var(--line); border-radius: 10px; display: none; flex-direction: column; }
+  #term.open { display: flex; }
+  #term header { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12px; }
+  #term header span { color: var(--muted); }
+  #term header button { margin-left: auto; padding: 4px 10px; }
+  #term pre { margin: 0; flex: 1; overflow: auto; padding: 12px; font-size: 11.5px; line-height: 1.4; white-space: pre-wrap; word-break: break-all; color: #e8e0d8; }
+  #rename { position: fixed; z-index: 6; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(20, 14, 10, .45); }
+  #rename.open { display: flex; }
+  #rename .box { width: min(420px, 92vw); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+  #rename h2 { margin: 0 0 4px; font-size: 14px; }
+  #rename .ctx { color: var(--muted); font-size: 11.5px; margin-bottom: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #rename label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }
+  #rename input { width: 100%; font: inherit; font-size: 15px; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line); background: rgba(0,0,0,.25); color: var(--text); outline: none; }
+  #rename input:focus { border-color: var(--gold); }
+  #rename .hint { font-size: 11px; color: var(--muted); margin: 6px 0 12px; min-height: 16px; }
+  #rename .hint.err { color: var(--blocked); }
+  #rename .actions { display: flex; gap: 8px; }
+  #rename .actions button { padding: 8px 14px; }
+  #rename .actions .save { border-color: var(--gold); color: var(--gold); margin-left: auto; }
+  #rename .actions .save:disabled { opacity: .4; cursor: not-allowed; }
+  #rename .actions .save.danger { border-color: var(--blocked); color: var(--blocked); }
+  #rename .warn { border: 1px solid rgba(251,146,60,.35); background: rgba(251,146,60,.08); border-radius: 8px; padding: 9px 11px; font-size: 12px; margin-bottom: 12px; }
+  #rename .warn ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted); }
+  #rename select, #rename textarea { width: 100%; font: inherit; font-size: 14px; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line); background: rgba(0,0,0,.25); color: var(--text); outline: none; }
+  #rename select:focus, #rename textarea:focus { border-color: var(--gold); }
+  #rename textarea { resize: vertical; min-height: 84px; font-size: 13px; }
+  #rename .row2 { display: flex; gap: 10px; }
+  #rename .row2 > div { flex: 1; min-width: 0; }
+  #rename .seg { display: flex; gap: 6px; margin-bottom: 12px; }
+  #rename .seg button { flex: 1; padding: 8px; font-size: 12px; }
+  #rename .seg button.on { border-color: var(--gold); color: var(--gold); }
+  #rename .themes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
+  #rename .themes button { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 12px; }
+  #rename .themes button.on { border-color: var(--gold); color: var(--gold); }
+  #rename .sw { display: flex; border-radius: 4px; overflow: hidden; flex: none; }
+  #rename .avatars { grid-template-columns: repeat(2, 1fr); max-height: 46vh; overflow-y: auto; padding-right: 6px; margin-right: -6px; scrollbar-gutter: stable; }
+  #rename .avatars button { text-align: left; }
+  #rename .avatars .thumb { width: 44px; height: 55px; flex: none; image-rendering: auto; border-radius: 6px; background: rgba(255,255,255,.05); }
+  #rename .avatars button.on .thumb { background: rgba(251,191,36,.12); }
+  #rename .avatars .nm { display: flex; flex-direction: column; min-width: 0; }
+  #rename .avatars .nm small { color: var(--muted); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #rename .sw span { width: 11px; height: 18px; display: block; }
+  #rename .field { margin-bottom: 12px; }
+  #bar { bottom: 12px; left: 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #bar button { background: var(--panel); border: 1px solid var(--line); padding: 9px 13px; font-size: 12px; display: flex; align-items: center; gap: 7px; }
+  #bar button:hover { border-color: var(--gold); color: var(--gold); }
+  #bar button .plus { font-size: 15px; line-height: 1; opacity: .8; }
+  #bar .sep { width: 1px; height: 22px; background: var(--line); margin: 0 3px; }
+  #bar #bBlocked { border-color: var(--blocked); color: var(--blocked); }
+  #bar #bBlocked.none { display: none; }
+  #bar #bBlocked b { background: var(--blocked); color: #2a1508; border-radius: 20px; padding: 0 6px; font-size: 11px; }
+  #legend { bottom: 58px; left: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 11px; color: var(--muted); display: none; flex-direction: column; gap: 5px; max-width: 340px; }
+  #legend.open { display: flex; }
+  #legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  #legend b { color: var(--text); font-weight: 600; }
+  #follow { position: fixed; z-index: 3; top: 68px; left: 12px; display: none; align-items: center; gap: 6px; padding: 7px 12px; border-color: var(--gold); color: var(--gold); font-size: 12px; }
+  #follow.on { display: flex; }
+  #follow b { color: var(--text); font-weight: 600; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #follow span { color: var(--muted); }
+  .row.following { background: rgba(251,191,36,.08); border-color: rgba(251,191,36,.45); }
+  #toast { position: fixed; z-index: 5; bottom: 60px; left: 50%; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; font-size: 12px; display: none; }
+  #feed { bottom: 52px; left: 12px; width: 380px; max-height: 32vh; overflow: hidden; display: flex; flex-direction: column-reverse; gap: 4px; }
+  .ev { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; font-size: 11px; color: var(--muted); animation: evin .3s ease-out; }
+  .ev b { color: var(--text); font-weight: 600; }
+  @keyframes evin { from { opacity: 0; transform: translateY(6px); } }
+  @media (max-width: 760px) { #panel, #feed { display: none; } }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/build/three.module.js",
+  "three/addons/": "./vendor/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="top" class="hud">
+  <div class="brand"><span class="dot" id="conn"></span> BULLPEN <small id="ver"></small></div>
+  <div class="stats">
+    <div class="stat"><i style="background:var(--working)"></i><b id="nWorking">0</b> working</div>
+    <div class="stat"><i style="background:var(--blocked)"></i><b id="nBlocked">0</b> blocked</div>
+    <div class="stat"><i style="background:var(--idle)"></i><b id="nIdle">0</b> idle</div>
+    <div class="stat"><i style="background:var(--unknown)"></i><b id="nPanes">0</b> panes</div>
+  </div>
+  <div class="btns">
+    <button id="bRotate" title="Slowly orbit the camera">Orbit</button>
+    <button id="bFit" title="Reset camera to fit the office">Fit</button>
+    <button id="bPanel" class="active">List</button>
+  </div>
+</div>
+
+<aside id="panel" class="hud"></aside>
+<div id="feed" class="hud"></div>
+
+<div id="legend" class="hud">
+  <span><i style="background:var(--working)"></i><b>working</b> at desk · <i style="background:var(--idle)"></i><b>idle</b> rests at desk, then coffee after 1 min</span>
+  <span><i style="background:var(--blocked)"></i><b>blocked</b> in the help desk queue · <i style="background:var(--done)"></i><b>done</b> at the meeting table</span>
+  <span><i style="background:var(--gold)"></i>gold floor ring marks the pane focused in Herdr</span>
+  <span><b>click</b> focus in Herdr · <b>double-click</b> read terminal · <b>right-click</b> agent menu</span>
+  <span><b>f</b> fit camera · <b>b</b> next blocked agent · <b>Esc</b> close</span>
+</div>
+<div id="bar" class="hud">
+  <button id="bNewAgent" title="Start a new coding agent in a Herdr pane"><span class="plus">+</span> Agent</button>
+  <button id="bNewWs" title="Create a Herdr workspace from a folder"><span class="plus">+</span> Workspace</button>
+  <div class="sep"></div>
+  <button id="bDesign" title="Customize the office">✦ Customize</button>
+  <div class="sep"></div>
+  <button id="bBlocked" class="none" title="Jump to the next agent waiting on you">⚑ Blocked <b id="blockedN">0</b></button>
+  <button id="bHelp" title="Legend and shortcuts">?</button>
+</div>
+
+<div id="term"><header><b id="termTitle"></b><span id="termSub"></span><button id="termClose">close</button></header><pre id="termBody"></pre></div>
+<div id="toast"></div>
+<div id="menu"></div>
+<button id="follow" class="hud" title="Stop following">◎ following <b></b> <span>· Esc to stop</span></button>
+<div id="rename"><div class="box">
+  <h2 id="rnTitle">Rename agent</h2>
+  <div class="ctx" id="rnCtx"></div>
+  <div id="rnBody"></div>
+  <div class="hint" id="rnHint"></div>
+  <div class="actions"><button id="rnCancel">Cancel</button><button id="rnClear">Clear name</button><button id="rnSave" class="save">Save</button></div>
+</div></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { createVoxelCharacter, setCharacterOpacity } from './characters/createVoxelCharacter.js';
+import { characters as ROSTER } from './characters/roster.js';
+
+// ----------------------------------------------------------------- constants
+const STATE = {
+  working: { hex: 0x4ade80, css: '#4ade80' },
+  idle:    { hex: 0x60a5fa, css: '#60a5fa' },
+  blocked: { hex: 0xfb923c, css: '#fb923c' },
+  done:    { hex: 0x22c55e, css: '#22c55e' },
+  unknown: { hex: 0x9ca3af, css: '#9ca3af' },
+};
+const DESK_W = 2.3, BANK_D = 3.0, BANK_PAD = 0.35, BANK_GAP = 1.5, MAX_ROW_W = 16, BANK_COLS = 5, WALL_PAD = 1.0, LOUNGE_D = 7.2, LOUNGE_MIN_W = 13, CORRIDOR_W = 1.8;
+const WALK_SPEED = 2.3, STATE_DWELL = 1.2, IDLE_TO_LOUNGE_MIN = 1, LONG_IDLE_MIN = 30, EASEL_POLL_MS = 2500;   // idle: rest at the desk, then coffee, then a nap
+// provider brand colours for the mascots and their tags
+const KIND_COLORS = {
+  claude: 0xd97757,   // Anthropic clay
+  codex: 0x10a37f,    // OpenAI green
+  gemini: 0x6e8df5,   // Gemini blue-violet
+  copilot: 0x8957e5,  // GitHub Copilot purple
+  cursor: 0x2b2b31,   // Cursor black
+  devin: 0x2563eb,    // Cognition blue
+  hermes: 0x6b7f3a,   // Nous Research olive
+  amp: 0xf26d3d,      // Sourcegraph Amp orange
+  opencode: 0x2fa36b, // OpenCode mint
+  cline: 0x3d8bfd,    // Cline blue
+  kiro: 0x7b4bff,     // Kiro violet
+  qwen: 0x615ced,     // Qwen purple
+  kimi: 0x1e3a8a,     // Kimi navy
+  grok: 0x3a3a3f,     // xAI graphite
+  droid: 0xf97316,    // Factory orange
+  kilo: 0xf2a83b,     // Kilo amber
+  agy: 0x22c55e,      // Antigravity green
+  pi: 0x6366f1, maki: 0xf2c230, qodercli: 0x0891b2, omp: 0xe11d48, mastracode: 0x0ea5e9,
+};
+const ROOM_HUES = [212, 265, 160, 25, 330, 190, 90];
+const SKIN = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac, 0xd9a066];
+const HAIR = [0x2b1d14, 0x101010, 0x6b3e1f, 0xc9a24a, 0xd94b3d, 0x4b4b6a, 0xf0f0f0, 0x3e8ed0];
+const SHIRT = [0x3b82f6, 0xef4444, 0x10b981, 0xf59e0b, 0x8b5cf6, 0xec4899, 0x14b8a6, 0xf97316, 0xe5e7eb];
+const PANTS = [0x1f2937, 0x374151, 0x312e81, 0x4a3728, 0x111827];
+const TOOL_GLYPH = { read: '📖', write: '✏️', run: '⚙️', agent: '👥', ask: '💬', mcp: '🔌', other: '🔧' };
+const TOOL_LABEL = { read: 'reading', write: 'editing', run: 'running', agent: 'delegating', ask: 'asking', mcp: 'mcp call', other: 'tool' };
+
+// -------------------------------------------------------------------- utils
+const hash = (s) => { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h; };
+const pick = (arr, h, shift) => arr[(h >>> shift) % arr.length];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const damp = (cur, target, lambda, dt) => lerp(cur, target, 1 - Math.exp(-lambda * dt));
+const dampAngle = (cur, target, lambda, dt) => { let d = target - cur; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return cur + d * (1 - Math.exp(-lambda * dt)); };
+const ago = (iso) => { if (!iso) return ''; const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000); if (s < 60) return `${Math.floor(s)}s`; if (s < 3600) return `${Math.floor(s / 60)}m`; return `${Math.floor(s / 3600)}h`; };
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const yawTo = (dx, dz) => Math.atan2(-dx, -dz);
+
+function stdMat(color, opts = {}) { return new THREE.MeshStandardMaterial({ color, roughness: 0.92, metalness: 0.0, ...opts }); }
+function box(w, h, d, material, { castShadow = true, receiveShadow = true } = {}) {
+  const g = new THREE.BoxGeometry(w, h, d); g.translate(0, h / 2, 0);
+  const m = new THREE.Mesh(g, material); m.castShadow = castShadow; m.receiveShadow = receiveShadow; return m;
+}
+function makeTextSprite(text, { font = '600 30px "IBM Plex Mono", monospace', color = '#f3ede6', bg = 'rgba(27,27,30,0.9)', pad = 14, height = 0.34, border = null, tail = false } = {}) {
+  const c = document.createElement('canvas'); const ctx = c.getContext('2d');
+  ctx.font = font; const w = Math.ceil(ctx.measureText(text).width) + pad * 2; const h = tail ? 66 : 52;
+  c.width = Math.max(8, w); c.height = h; ctx.font = font;
+  ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(0, 0, c.width, 52, 12); ctx.fill();
+  if (tail) { ctx.beginPath(); ctx.moveTo(c.width / 2 - 10, 50); ctx.lineTo(c.width / 2, 65); ctx.lineTo(c.width / 2 + 10, 50); ctx.fill(); }
+  if (border) { ctx.strokeStyle = border; ctx.lineWidth = 3; ctx.beginPath(); ctx.roundRect(1.5, 1.5, c.width - 3, 49, 11); ctx.stroke(); }
+  ctx.fillStyle = color; ctx.textBaseline = 'middle'; ctx.textAlign = 'center'; ctx.fillText(text, c.width / 2, 27);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.minFilter = THREE.LinearFilter;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+  sp.scale.set(height * (c.width / h), height, 1); sp.userData.text = text; return sp;
+}
+function makeGlyphSprite(glyph, { size = 0.62, bg = 'rgba(255,255,255,0.95)', border = '#1f2937', color = '#111' } = {}) {
+  const c = document.createElement('canvas'); c.width = 96; c.height = 96; const ctx = c.getContext('2d');
+  ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(4, 4, 88, 80, 18); ctx.fill();
+  ctx.strokeStyle = border; ctx.lineWidth = 5; ctx.beginPath(); ctx.roundRect(4, 4, 88, 80, 18); ctx.stroke();
+  ctx.fillStyle = bg; ctx.beginPath(); ctx.moveTo(38, 82); ctx.lineTo(48, 94); ctx.lineTo(58, 82); ctx.fill();
+  ctx.font = '600 50px "Press Start 2P", "Apple Color Emoji", "Segoe UI Emoji", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = color; ctx.fillText(glyph, 48, 46);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })); sp.scale.set(size, size, 1); return sp;
+}
+
+// ---------------------------------------------------------------------- themes
+const THEMES = {
+  oak:     { name: 'Warm oak',   planks: ['#a8794f', '#b08256', '#a2734a', '#b78a5d', '#ab7c52'], wall: 0xd8d0bf, trim: 0xf4f2ee, plinth: 0x6b4a30, backdrop: 0xf0a63a },
+  nordic:  { name: 'Nordic',     planks: ['#d8c9b0', '#e0d2ba', '#d2c2a7', '#e5d8c2', '#dbccb4'], wall: 0xeceae4, trim: 0xffffff, plinth: 0xb9a68c, backdrop: 0x9fc4d6 },
+  walnut:  { name: 'Walnut',     planks: ['#5a3a26', '#5f3d29', '#553622', '#63412c', '#583823'], wall: 0xcfc6b4, trim: 0xf4f2ee, plinth: 0x3a2418, backdrop: 0xc98c71 },
+  studio:  { name: 'Studio',     planks: ['#b4b2ad', '#bcbab5', '#adaba6', '#c2c0bb', '#b8b6b1'], wall: 0xe4e2dd, trim: 0xffffff, plinth: 0x6d6b67, backdrop: 0x7f8c99 },
+  sakura:  { name: 'Sakura',     planks: ['#c9a08a', '#d3ab94', '#c29a84', '#dab49d', '#cda58e'], wall: 0xf0e2e2, trim: 0xfff8f6, plinth: 0x8d6a5c, backdrop: 0xe8a0b4 },
+  midnight:{ name: 'Midnight',   planks: ['#3d4250', '#454a58', '#393e4b', '#4b5060', '#414654'], wall: 0x4a5062, trim: 0x9aa3b8, plinth: 0x23262f, backdrop: 0x2b3040 },
+};
+let themeKey = (() => { try { return localStorage.getItem('herdr-office-theme') || 'oak'; } catch { return 'oak'; } })();
+if (!THEMES[themeKey]) themeKey = 'oak';
+let THEME = THEMES[themeKey];
+
+// Screenagers mark, rasterised from Screenagers-logo.svg onto the voxel grid; letters index the brand gradient
+const LOGO = {
+  palette: [0x1eb4b2, 0x48bf98, 0x6cc981, 0x8cd26c, 0xa8d95b, 0xbedf4d, 0xcfe342, 0xdae73a, 0xe1e836, 0xe3e935, 0x231f20],
+  rows: [
+  '.............................................................bdefd',
+  '.......................................................ddcccehjjjd',
+  '.................................................eeeddddcceijjjjj',
+  '..........................................gggfffeeeedddddgjjjjjji',
+  '....................................iiiihhggfffeeeeddddeijjjijjjg',
+  '.............................iiiiiiiiiihgggffffeeeedddfjjjjjjjjjf',
+  '..........................iiiiiiiiiiiihhggffffeeeedddfijijijijije',
+  '................iji......iiiiiiiiiiiihhggffffeeeeeddeiiiijjjjjjje',
+  '..........gghiiiiiij.....iijiiiiiiiihgggffffeeeeeddeiiijiiijijij',
+  '........efgghiiiiijj.....jjjjiiiiihhgggffffeeeeedddgiiiijiijjijj',
+  '.......defghhiiiijij.....jijijiiihhgggffffeeeeeeddeiiiiiiiiiijih',
+  '......cdefghhiiiijjj.....jjiiiiihhgggffffeeeeeedddhiiiiiiiiiiiif',
+  '......cdefghhiiiijjj.....jijiiihggggffffeeeeeddddeiiiiiiiiiiiiif',
+  '.....bcdefghhiiiijjj.....jjjjhhggggffffeeeeeeddddgiiiiiiiiiiiiie',
+  '.....bcdfgghhiiiijjj....ijiihhgggfffffeeeeeedddddiiiiiiiiiiiiiie',
+  '.....bcefgghiiiiijjj....jjihhgggfffffeeeeeddddddeiiiiiiiiiiiiii',
+  '.....bdefghhiiiiijj.....jihhgggffffeeeeeedddddddeiiiiiiiiiiiiii',
+  '.....cdefghhiiiijjj.....hhhgggffffeeeeeeddddddddfiiiiiiiiiiiiig',
+  '....acdefghhiiiiijj.....hgggfffffeeeeeedddddddccgiiiiiiiiiiiiif',
+  '....bcdefghhiiiijjj.....gggffffeeeeeeedddddddccchhhiiiiiiiiiiii',
+  '....bceffghiiiijijj.....ggffffeeeeeeddddddddcccdhhhhhiiiiiiiii',
+  '....bcefgghiiiijjjj....ggffffeeeeeeddddddddddddfhhhhhhiiiiiiii',
+  '....bdefghhiiiijij.....gffffeeeeeedddddd........hhhhhhhhhiiiii',
+  '....cdefghhiiiiijj.....ffffeeeeeee.............hhhhhhhhhhhiiii',
+  '....cdefghhiiiijij.....ffff....................gghhhhhhhhhhhhi',
+  '...bcdefghhiiiijjj.............................gggghhhhhhhhhhh',
+  '...bcdfgghhiiiijjj.............................gggggghhhhhhhh',
+  '...bcefgghiiiiijji....................jj.......gggggggghhhhhh',
+  '...bdefghhiiiiijjj..............ijjjijjjj......ffgggggggghhhh',
+  '...cdefghhiiiijjj........ffggghiiiijjjjjjj....fffffgggggggghh',
+  '...cdefghhiiiiijjfeeeeeefffgghhiijijijijj.....fffffffgggggggg',
+  '..bcdefghhiiiijjidddeeefffgghhiiiiiijjjjj.....eefffffffgggggg',
+  '..bcefgghiiiiiijgddeeeefffgghiiiiiijijjji.....eeeefffffffgggg',
+  '..bcefgghiiiiijjfddeeefffgghhiiiiiijjijjj.....eeeeeeffffffgg',
+  '..bdefghhiiiijijedeeeefffgghiiiiiiiiijijj.....deeeeeefffffff',
+  '..cdefghhiiiijjgddeeefffgghiiiiiiiiiijjjj.....dddeeeeeeeffff',
+  '.bcdefghhiiiijjedeeeefffghhiiiiiiiijijijj....cdddddeeeeeeff',
+  '.bcdefghhiiijigddeeefffgghiiiiiiiiiijijj.....cccdddddeeeeee',
+  '.bcdfgghhiiiijeddeeefffgghiiiiiiiiiiijij.....cccccdddddee',
+  '.bcefgghiiiiifddeeefffgghiiiiiiiiiiiiiji.....bbcccccddd',
+  '.bdefghhiiiigdddeeefffghhiiiiiiiiiiiiiij.......bbc',
+  '.cdefghhiiihdddeeeeffgghiiiiiiiiiiiiiiii',
+  '.cdefghhiihddddeeefffgghhiiiiiiiiiii',
+  'bcdefghhigdddddeeeffgghhhiiiii',
+  'bcefgghheccddddeeeffggh',
+  'bcefggfccccdddee',
+  'bdefecccc',
+  'bcc',
+  '',
+  ],
+};
+
+// ---------------------------------------------------------------------- palette
+const C = { white: 0xf4f2ee, cream: 0xe9e2d3, wall: 0xd8d0bf, dark: 0x2a2a2e, black: 0x1b1b1e, woodDark: 0x5a3a26, wood: 0x8b5e3c, yellow: 0xf2c230, green: 0x5f8f4a, leaf: 0x3f8f4a, leafLight: 0x6fb35a, orange: 0xe8792b, chrome: 0xb8bcc4, paper: 0xfaf8f4, terracotta: 0xc77b4a, mustard: 0xf0a63a, sofa: 0xf2ede4, knit: 0x6f9a5b };
+const WHITE = stdMat(THEME.trim), CREAM = stdMat(C.cream), BLACK = stdMat(C.black), CHROME = stdMat(C.chrome, { metalness: 0.35, roughness: 0.45 }), PAPER = stdMat(C.paper), YELLOW = stdMat(C.yellow);
+const BOOK_COLORS = [0xe0473b, 0x2f6fd6, 0xf2c230, 0x2fa36b, 0x8b5cf6, 0x1b1b1e, 0xf97316, 0x0ea5e9, 0xf4f2ee];
+const VOX_MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 });
+
+// ----------------------------------------------------------------- voxel builder
+// Everything solid in the office is built from unit cubes on an integer grid, then meshed with hidden faces removed.
+class Vox {
+  constructor(unit = 0.08) { this.unit = unit; this.map = new Map(); }
+  set(x, y, z, c) { this.map.set(`${x},${y},${z}`, c); return this; }
+  del(x, y, z) { this.map.delete(`${x},${y},${z}`); return this; }
+  box(x, y, z, w, h, d, c) { for (let i = 0; i < w; i++) for (let j = 0; j < h; j++) for (let k = 0; k < d; k++) this.set(x + i, y + j, z + k, c); return this; }
+  cyl(cx, y, cz, r, h, c, rz = r) { for (let i = -Math.ceil(r); i <= Math.ceil(r); i++) for (let k = -Math.ceil(rz); k <= Math.ceil(rz); k++) if ((i / (r + 0.5)) ** 2 + (k / (rz + 0.5)) ** 2 <= 1) for (let j = 0; j < h; j++) this.set(cx + i, y + j, cz + k, c); return this; }
+  ell(cx, cy, cz, rx, ry, rz, c) { for (let i = -rx; i <= rx; i++) for (let j = -ry; j <= ry; j++) for (let k = -rz; k <= rz; k++) if ((i / (rx + 0.5)) ** 2 + (j / (ry + 0.5)) ** 2 + (k / (rz + 0.5)) ** 2 <= 1) this.set(cx + i, cy + j, cz + k, c); return this; }
+  roundRect(x, y, z, w, d, r, c, h = 1) { for (let i = 0; i < w; i++) for (let k = 0; k < d; k++) { const dx = Math.max(0, r - i, i - (w - 1 - r)), dz = Math.max(0, r - k, k - (d - 1 - r)); if (dx * dx + dz * dz <= r * r) for (let j = 0; j < h; j++) this.set(x + i, y + j, z + k, c); } return this; }
+  // paint a picture: rows of characters, top row first; axis 'xy' = vertical picture facing -z, 'xz' = flat on the floor
+  paint(x0, y0, z0, rows, palette, axis = 'xy') { rows.forEach((row, ri) => { [...row].forEach((ch, ci) => { const c = palette[ch]; if (c == null) return; if (axis === 'xy') this.set(x0 + ci, y0 + rows.length - 1 - ri, z0, c); else this.set(x0 + ci, y0, z0 + ri, c); }); }); return this; }
+  mesh(material = VOX_MAT) {
+    const pos = [], nor = [], col = []; const u = this.unit; const c = new THREE.Color();
+    const dirs = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+    const axes = { x: [[0, 0, 1], [0, 1, 0]], y: [[1, 0, 0], [0, 0, 1]], z: [[1, 0, 0], [0, 1, 0]] };
+    for (const [k, hex] of this.map) {
+      const [x, y, z] = k.split(',').map(Number); c.setHex(hex);
+      for (const [dx, dy, dz] of dirs) {
+        if (this.map.has(`${x + dx},${y + dy},${z + dz}`)) continue;
+        const shade = dy === 1 ? 1 : dy === -1 ? 0.6 : dx !== 0 ? 0.86 : 0.93;
+        const [uu, vv] = axes[dx ? 'x' : dy ? 'y' : 'z'];
+        const cx = x + 0.5 + dx * 0.5, cy = y + 0.5 + dy * 0.5, cz = z + 0.5 + dz * 0.5;
+        const P = (su, sv) => [(cx + uu[0] * su + vv[0] * sv) * u, (cy + uu[1] * su + vv[1] * sv) * u, (cz + uu[2] * su + vv[2] * sv) * u];
+        const p0 = P(-0.5, -0.5), p1 = P(0.5, -0.5), p2 = P(0.5, 0.5), p3 = P(-0.5, 0.5);
+        const cross = [uu[1] * vv[2] - uu[2] * vv[1], uu[2] * vv[0] - uu[0] * vv[2], uu[0] * vv[1] - uu[1] * vv[0]];
+        const flip = cross[0] * dx + cross[1] * dy + cross[2] * dz < 0;
+        const tri = flip ? [p0, p2, p1, p0, p3, p2] : [p0, p1, p2, p0, p2, p3];
+        for (const p of tri) { pos.push(...p); nor.push(dx, dy, dz); col.push(c.r * shade, c.g * shade, c.b * shade); }
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.computeBoundingSphere(); const m = new THREE.Mesh(g, material); m.castShadow = true; m.receiveShadow = true; return m;
+  }
+}
+const vox = (unit, fn) => { const v = new Vox(unit); fn(v); return v.mesh(); };
+
+// ------------------------------------------------------------- screen texture
+class Screen {
+  constructor() {
+    this.c = document.createElement('canvas'); this.c.width = 128; this.c.height = 80; this.ctx = this.c.getContext('2d');
+    this.tex = new THREE.CanvasTexture(this.c); this.tex.colorSpace = THREE.SRGBColorSpace; this.tex.magFilter = THREE.NearestFilter; this.tex.minFilter = THREE.NearestFilter;
+    this.lines = Array.from({ length: 9 }, () => this.randLine()); this.acc = 0; this.mode = 'unknown'; this.blink = 0; this.flashT = 0; this.draw();
+  }
+  randLine() { const cols = ['#7dd3fc', '#c4b5fd', '#fca5a5', '#fde68a', '#86efac', '#e5e7eb']; const segs = []; let x = 4 + Math.floor(Math.random() * 3) * 8; const n = 1 + Math.floor(Math.random() * 4); for (let i = 0; i < n; i++) { const w = 8 + Math.random() * 30; segs.push({ x, w, c: cols[Math.floor(Math.random() * cols.length)] }); x += w + 5; } return segs; }
+  flash() { this.flashT = 0.35; }
+  update(dt, mode) {
+    this.mode = mode; this.acc += dt; this.blink += dt; if (this.flashT > 0) { this.flashT -= dt; this.draw(); return; }
+    if (mode === 'working' && this.acc > 0.16) { this.acc = 0; this.lines.shift(); this.lines.push(this.randLine()); this.draw(); }
+    else if (mode !== 'working' && this.acc > 0.5) { this.acc = 0; this.draw(); }
+  }
+  draw() {
+    const { ctx, c } = this;
+    if (this.flashT > 0) { ctx.fillStyle = Math.floor(this.flashT * 20) % 2 ? '#e5e7eb' : '#0d1117'; ctx.fillRect(0, 0, c.width, c.height); ctx.fillStyle = '#0d1117'; ctx.font = 'bold 20px monospace'; ctx.fillText('$ run', 8, 44); this.tex.needsUpdate = true; return; }
+    ctx.fillStyle = this.mode === 'unknown' ? '#0a0c10' : '#0d1117'; ctx.fillRect(0, 0, c.width, c.height);
+    if (this.mode === 'working') { this.lines.forEach((segs, i) => { for (const s of segs) { ctx.fillStyle = s.c; ctx.fillRect(s.x, 6 + i * 8, s.w, 4); } }); }
+    else if (this.mode === 'idle' || this.mode === 'done') { ctx.fillStyle = '#4b5563'; for (let i = 0; i < 4; i++) ctx.fillRect(6, 8 + i * 8, 30 + (i * 17) % 40, 3); ctx.fillStyle = '#9ca3af'; ctx.fillRect(6, 62, 6, 8); if (Math.floor(this.blink * 2) % 2 === 0) { ctx.fillStyle = '#e5e7eb'; ctx.fillRect(16, 62, 7, 8); } }
+    else if (this.mode === 'blocked') { ctx.fillStyle = '#7c2d12'; ctx.fillRect(0, 0, c.width, c.height); ctx.fillStyle = '#fed7aa'; ctx.fillRect(10, 12, 108, 20); ctx.fillStyle = '#7c2d12'; ctx.fillRect(14, 16, 60, 12); ctx.fillStyle = '#fdba74'; ctx.fillRect(20, 44, 40, 12); ctx.fillRect(68, 44, 40, 12); }
+    else { ctx.fillStyle = '#1f2937'; ctx.fillRect(6, 62, 6, 8); }
+    this.tex.needsUpdate = true;
+  }
+}
+
+// ----------------------------------------------------------------- character
+// The cast comes from the cool-characters project (public/characters/): ten
+// procedurally built voxel figures with a jointed rig (hips, knees, shoulders,
+// elbows, head, coffee cup). This class wraps one of them in the office's
+// character interface and drives the rig with the poses ported from that
+// project's stage (idle, walk, sit, type, coffee) plus three the office needs:
+// wave (blocked), talk (meeting) and fidget (queue).
+const ROSTER_BY_ID = Object.fromEntries(ROSTER.map((c) => [c.id, c]));
+// which figure plays which agent kind; anything unmapped draws from the whole roster
+const KIND_CAST = { claude: 'luma', codex: 'rivet', gemini: 'nova', hermes: 'milo', cursor: 'pixel', copilot: 'juno', amp: 'ember', opencode: 'koda', cline: 'echo', devin: 'moss' };
+const CHAR_SCALE = 0.55;                                   // the figures stand ~3 units; the office is built for ~1.65 m
+const MODEL_HIP = 0.9 * CHAR_SCALE;                        // leg pivot height at rest
+const MODEL_HEAD_TOP = 3.08 * CHAR_SCALE;                  // top of the hair, above the feet
+const SEAT_LIFT = 0.10;                                    // folded thighs hang this far below the hip pivot, so hips sit above the cushion
+
+const AVATARS = (() => { try { return JSON.parse(localStorage.getItem('herdr-office-avatars') || '{}'); } catch { return {}; } })();
+function setAvatar(seed, id) { if (id) AVATARS[seed] = id; else delete AVATARS[seed]; try { localStorage.setItem('herdr-office-avatars', JSON.stringify(AVATARS)); } catch { /* private mode */ } }
+function castFor(seed, kind) {
+  const h = hash(seed);
+  const chosen = AVATARS[seed] && ROSTER_BY_ID[AVATARS[seed]];
+  if (chosen) return { ...chosen };                                                   // an explicit pick is shown as designed, untinted
+  const base = ROSTER_BY_ID[KIND_CAST[kind]] || ROSTER[h % ROSTER.length];
+  // a small hue shift on the clothes so two agents of the same kind still tell apart
+  const shift = (((h >>> 8) % 5) - 2) * 0.05;
+  const tint = (hex) => { const c = new THREE.Color(hex); const hsl = {}; c.getHSL(hsl); c.setHSL((hsl.h + shift + 1) % 1, hsl.s, hsl.l); return '#' + c.getHexString(); };
+  return { ...base, shirt: tint(base.shirt), accent: tint(base.accent), pants: tint(base.pants) };
+}
+const lerpRot = (part, to, k) => { part.rotation.x = lerp(part.rotation.x, to.x ?? 0, k); part.rotation.y = lerp(part.rotation.y, to.y ?? 0, k); part.rotation.z = lerp(part.rotation.z, to.z ?? 0, k); };
+
+class Character {
+  constructor(seed, kind) {
+    this.data = castFor(seed, kind); this.style = { id: this.data.id };
+    this.group = new THREE.Group();
+    this.root = new THREE.Group(); this.group.add(this.root);            // root carries pose height, lying rotation and the hop
+    this.model = createVoxelCharacter(this.data);
+    this.model.scale.setScalar(CHAR_SCALE); this.model.rotation.y = Math.PI; // the figures face +Z; the office's forward is -Z
+    this.root.add(this.model);
+    this.parts = this.model.userData.parts;
+    this.hips = this.root;                                                // kept for code that reads hips.position.y
+    this.bubble = new THREE.Group(); this.group.add(this.bubble);
+    this.chat = null; this.chatT = 0;
+    this.pose = 'stand'; this.behaviour = 'rest'; this.seatH = MODEL_HIP; this.t = Math.random() * 10; this.walkPhase = 0; this.dim = 1; this.celebrateAt = -10; this.cupAmount = 0;
+  }
+  celebrate() { this.celebrateAt = this.t; }
+  say(text, seconds = 5) {
+    if (this.chat) { this.bubble.remove(this.chat); this.chat.material.map.dispose(); this.chat = null; }
+    if (!text) return;
+    this.chat = makeTextSprite(text.length > 44 ? text.slice(0, 43) + '…' : text, { font: '600 26px "IBM Plex Mono", monospace', bg: 'rgba(250,248,244,0.96)', color: '#1b1b1e', height: 0.4, tail: true });
+    this.chat.userData.order = 2; this.chatT = seconds; this.bubble.add(this.chat);
+  }
+  update(dt) {
+    this.t += dt; const t = this.t; const b = this.behaviour;
+    const sit = this.pose === 'sit', walk = this.pose === 'walk', lie = this.pose === 'lie';
+    if (walk) this.walkPhase += dt * 6.2;
+    const k = Math.min(dt * 9, 1); const P = this.parts;
+
+    // ---- targets: idle by default (ported from the stage's updateModelPose)
+    const T = {
+      bodyY: 0.04 + Math.sin(t * 2.1) * 0.035,
+      head: { y: Math.sin(t * 1.15) * 0.06 },
+      leftArm: { z: Math.sin(t * 1.75) * 0.035 }, rightArm: { z: -Math.sin(t * 1.75) * 0.035 },
+      leftElbow: {}, rightElbow: {},
+      leftLeg: { x: Math.sin(t * 1.35) * 0.012 }, rightLeg: { x: -Math.sin(t * 1.35) * 0.012 },
+      leftKnee: {}, rightKnee: {}, coffeeCup: {}, rightArmDepth: 0, cup: 0, rootZ: 0,
+    };
+    if (walk) {
+      const ph = this.walkPhase, stride = Math.sin(ph) * 0.62;
+      T.bodyY = 0.04 + Math.abs(Math.cos(ph)) * 0.055;
+      T.head = { y: Math.sin(ph * 0.5) * 0.035, z: Math.sin(ph) * 0.018 };
+      T.leftArm = { x: -stride * 0.72, z: 0.025 }; T.rightArm = { x: stride * 0.72, z: -0.025 };
+      T.leftElbow = { x: Math.max(0, stride) * 0.16 }; T.rightElbow = { x: Math.max(0, -stride) * 0.16 };
+      T.leftLeg = { x: stride }; T.rightLeg = { x: -stride };
+      T.leftKnee = { x: Math.max(0, -Math.sin(ph)) * 0.5 }; T.rightKnee = { x: Math.max(0, Math.sin(ph)) * 0.5 };
+    }
+    if (sit) {
+      T.bodyY = -0.05 + Math.sin(t * 1.5) * 0.008; T.head = { y: Math.sin(t * 0.8) * 0.035 };
+      T.leftLeg = { x: -1.38, z: 0.025 }; T.rightLeg = { x: -1.38, z: -0.025 }; T.leftKnee = { x: 1.38 }; T.rightKnee = { x: 1.38 };
+      T.leftArm = { x: -0.12, z: 0.04 }; T.rightArm = { x: -0.12, z: -0.04 }; T.leftElbow = { x: -0.1 }; T.rightElbow = { x: -0.1 };
+    }
+    if (lie) { T.bodyY = 0; T.head = { x: 0.05 }; T.leftArm = { x: -0.15, z: 0.06 }; T.rightArm = { x: -0.15, z: -0.06 }; T.leftLeg = { x: 0.02 }; T.rightLeg = { x: -0.02 }; }
+    if (b === 'type') {
+      // rhythm: fast runs that swell and ease (burst), with an occasional big reach for Enter
+      const burst = 0.55 + 0.45 * Math.sin(t * 0.7 + this.walkPhase * 0);
+      const beat = t * 8.8, press = (p) => Math.max(0, Math.sin(p)) ** 5;
+      const leftTap = Math.min(1, press(beat) + press(beat * 0.47 + 1.1) * 0.34) * burst, rightTap = Math.min(1, press(beat + Math.PI * 0.86) + press(beat * 0.51 + 3.2) * 0.3) * burst;
+      const reach = Math.max(0, Math.sin(t * 1.05 + 2.0)) ** 14;                         // ~one Enter every six seconds
+      const travel = Math.sin(t * 2.7); const taps = leftTap + rightTap;
+      this.tapL = leftTap; this.tapR = Math.max(rightTap, reach); this.tapBeat = beat; this.tapBurst = burst; this.tapReach = reach;
+      T.bodyY = -0.05 - taps * 0.012; T.rootZ = -0.04;
+      T.head = { x: 0.1 + Math.sin(t * 1.35) * 0.025 + taps * 0.03, y: Math.sin(t * 0.72) * 0.045 + (leftTap - rightTap) * 0.03, z: Math.sin(t * 0.9) * 0.009 + (leftTap - rightTap) * 0.02 };
+      T.leftArm = { x: -0.58 - leftTap * 0.14, y: Math.sin(beat * 0.24) * 0.07, z: 0.145 + travel * 0.05 };
+      T.rightArm = { x: -0.58 - rightTap * 0.14 + reach * 0.15, y: -Math.sin(beat * 0.22 + 0.7) * 0.07 - reach * 0.25, z: -0.145 - travel * 0.05 - reach * 0.35 };
+      T.leftElbow = { x: -0.93 + leftTap * 0.42, y: Math.sin(beat * 0.31) * 0.09, z: 0.055 + Math.sin(t * 3.1) * 0.11 };
+      T.rightElbow = { x: -0.93 + rightTap * 0.42 + reach * 0.5, y: -Math.sin(beat * 0.29 + 0.9) * 0.09, z: -0.055 - Math.sin(t * 2.85 + 0.6) * 0.11 };
+    } else { this.tapL = this.tapR = 0; this.tapBeat = null; }
+    if (b === 'sip') {
+      // the cup lives in front of the stomach between sips; it never drops back to the hip.
+      // cycle: hold (0–0.44) · lift (0.44–0.58) · sip (0.58–0.76) · lower (0.76–0.90) · hold (0.90–1)
+      const cycle = (t * 0.11) % 1; let lift = 0;
+      if (cycle >= 0.44 && cycle < 0.58) lift = THREE.MathUtils.smoothstep(cycle, 0.44, 0.58);
+      else if (cycle >= 0.58 && cycle < 0.76) lift = 1;
+      else if (cycle >= 0.76 && cycle < 0.90) lift = 1 - THREE.MathUtils.smoothstep(cycle, 0.76, 0.90);
+      const sip = cycle >= 0.58 && cycle < 0.76 ? Math.sin(((cycle - 0.58) / 0.18) * Math.PI * 2) * 0.5 + 0.5 : 0;
+      if (!sit) T.bodyY = 0.035 + Math.sin(t * 1.25) * 0.012;
+      T.head = { x: lift * 0.11 + sip * 0.025, y: Math.sin(t * 0.65) * 0.025 + lift * 0.035, z: -lift * 0.022 };
+      T.leftArm = { x: -0.05, z: 0.42 }; T.leftElbow = { x: -0.08, z: -0.48 };
+      // lift = 0 is the stomach hold, lift = 1 is the cup at the mouth
+      T.rightArm = { x: lerp(-0.42, -1.25, lift), y: lerp(0.12, 0.336, lift), z: lerp(-0.30, -0.462, lift) };
+      T.rightArmDepth = lift * 0.02;
+      T.rightElbow = { x: lerp(-1.10, -0.062, lift), y: lerp(0.46, 0.488, lift), z: lerp(-0.62, -1.08, lift) - sip * 0.012 };
+      if (!sit) { T.leftLeg = { x: 0.035, z: 0.025 }; T.rightLeg = { x: -0.055, z: -0.025 }; }
+      T.coffeeCup = { x: lerp(1.05, 0.72, lift) + sip * 0.025, y: lerp(0.45, 0.748, lift), z: lerp(1.15, 1.758, lift) };
+      T.cup = 1;
+    }
+    if (b === 'wave') {                                    // right arm up, hand waving from the elbow
+      const w = Math.sin(t * 7);
+      T.rightArm = { x: -0.25, z: 2.55 + w * 0.08 }; T.rightElbow = { x: 0, z: 0.35 + w * 0.45 };
+      T.leftArm = { x: -0.1, z: 0.12 }; T.head = { x: -0.06, y: Math.sin(t * 3) * 0.1, z: Math.sin(t * 3) * 0.05 };
+      T.bodyY = 0.04 + Math.abs(Math.sin(t * 6)) * 0.05;
+    }
+    if (b === 'talk') {                                    // hands up, gesturing
+      T.leftArm = { x: -0.55 + Math.sin(t * 3) * 0.12, z: 0.35 }; T.rightArm = { x: -0.45 + Math.cos(t * 2.3) * 0.15, z: -0.4 };
+      T.leftElbow = { x: -0.9 + Math.sin(t * 3.4) * 0.25 }; T.rightElbow = { x: -1.0 + Math.cos(t * 2.6) * 0.3 };
+      T.head = { x: Math.sin(t * 2.5) * 0.06, y: Math.sin(t * 1.7) * 0.12 };
+    }
+    if (b === 'fidget') {                                  // shifting weight, glancing about
+      T.leftArm = { x: -0.05, z: 0.08 + Math.sin(t * 1.3) * 0.05 }; T.rightArm = { x: -0.1 + Math.sin(t * 1.1) * 0.15, z: -0.1 };
+      T.rightElbow = { x: -0.5 + Math.sin(t * 1.1) * 0.3 }; T.head = { y: Math.sin(t * 0.7) * 0.35, x: 0.03 };
+      T.leftLeg = { x: Math.sin(t * 0.9) * 0.05 }; T.rightLeg = { x: -Math.sin(t * 0.9) * 0.05 };
+    }
+    if (b === 'sleep') { T.head = { x: 0.08 }; T.leftArm = { x: -0.15, z: 0.06 }; T.rightArm = { x: -0.15, z: -0.06 }; }
+
+    // ---- apply
+    lerpRot(P.head, T.head, k); lerpRot(P.leftArm, T.leftArm, k); lerpRot(P.rightArm, T.rightArm, k);
+    lerpRot(P.leftElbow, T.leftElbow, k); lerpRot(P.rightElbow, T.rightElbow, k);
+    lerpRot(P.leftLeg, T.leftLeg, k); lerpRot(P.rightLeg, T.rightLeg, k); lerpRot(P.leftKnee, T.leftKnee, k); lerpRot(P.rightKnee, T.rightKnee, k);
+    lerpRot(P.coffeeCup, T.coffeeCup, k);
+    P.rightArm.position.z = lerp(P.rightArm.position.z, T.rightArmDepth, k);
+    this.cupAmount = lerp(this.cupAmount, T.cup, Math.min(dt * 10, 1));
+    P.coffeeCup.visible = this.cupAmount > 0.008; P.coffeeCup.scale.setScalar(0.01 + this.cupAmount * 0.99);
+
+    // root: pose height, lying, and the celebration hop
+    const baseY = (sit ? this.seatH + SEAT_LIFT - MODEL_HIP : lie ? this.seatH + 0.12 : 0) + T.bodyY * CHAR_SCALE;
+    let hop = 0; const age = t - this.celebrateAt;
+    if (age >= 0 && age < 1.15) { hop = Math.sin(Math.min(age / 0.72, 1) * Math.PI) * 0.3; const up = 1.15 * Math.sin(Math.min(age * 2.2, 1) * Math.PI * 0.5); P.leftArm.rotation.z = -up; P.rightArm.rotation.z = up; }
+    this.root.position.y = lerp(this.root.position.y, baseY, k) + hop;
+    this.root.position.z = lerp(this.root.position.z, lie ? 0.45 : T.rootZ * CHAR_SCALE, k);
+    this.root.rotation.x = lerp(this.root.rotation.x, lie ? -Math.PI / 2 : 0, Math.min(dt * 8, 1));
+    this.group.position.y = 0;
+
+    setCharacterOpacity(this.model, this.dim >= 1 ? 1 : this.dim > 0.5 ? this.dim : 0.4);
+    this.bubble.position.y = (lie ? this.seatH + 0.62 : this.root.position.y + MODEL_HEAD_TOP + 0.3) + Math.sin(t * 3) * 0.03;
+    this.bubble.position.z = lie ? -0.75 : 0;
+    let stackY = 0; const speaking = !!this.chat;
+    for (const c of [...this.bubble.children].sort((a, b2) => (a.userData.order ?? 1) - (b2.userData.order ?? 1))) {
+      if (c.userData.hideWithChat) c.visible = !speaking;
+      if (!c.visible) continue; c.position.y = stackY + c.scale.y * 0.5; stackY += c.scale.y + 0.05;
+    }
+    if (this.chat) { this.chatT -= dt; if (this.chatT < 0.6) this.chat.material.opacity = Math.max(0, this.chatT / 0.6); if (this.chatT <= 0) { this.bubble.remove(this.chat); this.chat.material.map.dispose(); this.chat = null; } }
+  }
+}
+const VOX_DIM = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, color: 0x777777 });
+
+// ---------------------------------------------------------------------- furniture (voxel)
+function voxDesk() {
+  return vox(0.08, (v) => {
+    v.box(-11, 9, -5, 22, 1, 10, C.white);                       // top
+    v.box(-10, 0, -4, 1, 9, 1, C.white); v.box(-10, 0, 3, 1, 9, 1, C.white); // legs
+    v.box(4, 0, -4, 6, 9, 9, C.white);                            // drawer cabinet
+    for (const y of [2, 5, 7]) v.box(6, y, 5, 2, 1, 1, C.dark);   // handles
+    v.box(-2, 10, -3, 2, 2, 2, C.dark); v.box(-3, 10, -4, 4, 1, 3, C.dark); // monitor stand
+    v.box(-7, 12, -4, 11, 7, 1, C.dark);                          // bezel
+    v.cyl(-8, 10, -2, 1, 1, C.dark); v.box(-8, 11, -2, 1, 5, 1, C.dark); v.set(-7, 16, -2, C.dark); v.set(-6, 16, -2, C.dark); v.set(-5, 17, -2, C.dark); v.set(-4, 17, -2, C.dark); // lamp base + arm
+  });
+}
+function voxOfficeChair() {
+  return vox(0.08, (v) => {
+    v.box(-3, 5, -3, 7, 1, 7, C.black); v.box(-3, 6, 3, 7, 8, 1, C.black);
+    v.box(-4, 8, -1, 1, 1, 4, C.black); v.box(3, 8, -1, 1, 1, 4, C.black); v.set(-4, 6, 1, C.black); v.set(-4, 7, 1, C.black); v.set(3, 6, 1, C.black); v.set(3, 7, 1, C.black);
+    v.box(0, 2, 0, 1, 3, 1, C.chrome); v.cyl(0, 1, 0, 1, 1, C.black); // gas post + hub
+    // five spokes one voxel off the floor, each rolling on its own caster, so nothing lies flat against the rug
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + 0.3; let pz = 0;
+      for (let r = 1; r <= 4; r++) { const x = Math.round(Math.cos(a) * r), z = Math.round(Math.sin(a) * r); v.set(x, 1, pz, C.black); v.set(x, 1, z, C.black); pz = z; }
+      v.set(Math.round(Math.cos(a) * 4), 0, Math.round(Math.sin(a) * 4), C.chrome);
+    }
+  });
+}
+function voxChair(color = C.black) { return vox(0.08, (v) => { v.box(-3, 5, -3, 6, 1, 6, color); v.box(-3, 6, 2, 6, 6, 1, color); for (const [x, z] of [[-3, -3], [2, -3], [-3, 2], [2, 2]]) v.box(x, 0, z, 1, 5, 1, C.chrome); }); }
+function voxSofa() {
+  return vox(0.08, (v) => {
+    // backrest on the -Z side so the sofa faces +Z, toward the coffee table
+    v.box(-12, 0, -5, 25, 5, 11, C.sofa); v.box(-12, 5, -5, 25, 5, 3, C.sofa); v.box(-12, 5, -5, 2, 3, 11, C.sofa); v.box(11, 5, -5, 2, 3, 11, C.sofa);
+    v.box(-10, 5, -2, 10, 1, 7, C.white); v.box(1, 5, -2, 10, 1, 7, C.white); v.box(-9, 6, -2, 5, 4, 1, C.yellow); v.box(6, 6, -2, 4, 3, 1, C.knit);
+  });
+}
+function voxArmchair() {
+  return vox(0.08, (v) => {
+    v.box(-6, 0, -6, 12, 6, 12, C.knit); v.box(-6, 6, 3, 12, 6, 3, C.knit); v.box(-6, 6, -6, 2, 2, 12, C.knit); v.box(4, 6, -6, 2, 2, 12, C.knit);
+    for (let x = -4; x < 4; x += 2) for (let z = -5; z < 3; z += 2) v.set(x, 6, z, 0x628c50); // knit texture
+    v.box(-4, 6, 1, 8, 1, 2, 0x7fae6a);
+  });
+}
+function voxCoffeeTable() { return vox(0.08, (v) => { v.box(-6, 4, -3, 13, 1, 7, C.yellow); for (const [x, z] of [[-6, -3], [6, -3], [-6, 3], [6, 3]]) v.box(x, 0, z, 1, 4, 1, C.yellow); v.box(-2, 5, -1, 4, 1, 3, 0x2fa36b); v.box(2, 5, 0, 2, 1, 2, C.paper); }); }
+function voxBookshelf(cols, rows, seed) {
+  return vox(0.08, (v) => {
+    const cell = 5, t = 1, w = cols * cell + t, hgt = rows * cell + t, d = 5; const x0 = -Math.floor(w / 2);
+    v.box(x0, 0, -1, w, hgt, 1, C.white);
+    for (let i = 0; i <= cols; i++) v.box(x0 + i * cell, 0, -1, t, hgt, d, C.white);
+    for (let j = 0; j <= rows; j++) v.box(x0, j * cell, -1, w, t, d, C.white);
+    let r = hash(seed);
+    for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+      r = (r * 1103515245 + 12345) >>> 0; const kind = r % 4; const cx = x0 + t + i * cell, cy = t + j * cell;
+      if (kind === 0) v.box(cx, cy, 0, cell - 1, cell - 1, d - 2, C.black);
+      else if (kind === 1 || kind === 2) { for (let b = 0; b < cell - 1; b++) { r = (r * 1103515245 + 12345) >>> 0; v.box(cx + b, cy, 0, 1, 2 + r % 3, d - 2, BOOK_COLORS[r % BOOK_COLORS.length]); } }
+      else { v.ell(cx + 2, cy + 1, 1, 1, 1, 1, C.orange); }
+    }
+  });
+}
+function voxPlant(big = true) {
+  return vox(0.08, (v) => {
+    // a squat pot, a thin stem and a full leafy crown, so it still reads as a plant when scaled down
+    v.cyl(0, 0, 0, 2, 3, C.terracotta); v.cyl(0, 3, 0, 2, 1, 0x4a3524); v.box(-2, 2, -2, 5, 1, 5, 0xd0885a);
+    if (big) {
+      v.box(0, 4, 0, 1, 4, 1, 0x3b6b2f);
+      v.ell(0, 9, 0, 3, 2, 3, C.leaf); v.ell(-2, 8, 1, 2, 2, 2, C.leafLight); v.ell(2, 8, -1, 2, 2, 2, C.leaf); v.ell(0, 11, 0, 2, 1, 2, C.leafLight);
+      v.ell(-1, 10, -2, 1, 1, 1, C.leaf); v.ell(2, 10, 2, 1, 1, 1, C.leafLight);
+    } else { v.ell(0, 5, 0, 2, 2, 2, C.leaf); v.set(0, 7, 0, C.leafLight); }
+  });
+}
+function voxRugBlob(seed) {
+  return vox(0.1, (v) => {
+    let r = hash(seed);
+    v.cyl(0, 0, 0, 22, 1, C.green, 16); v.cyl(-14, 0, 6, 12, 1, C.green, 9); v.cyl(15, 0, -5, 11, 1, C.green, 8); v.cyl(6, 0, 11, 10, 1, C.green, 6);
+    for (let i = 0; i < 90; i++) { r = (r * 1103515245 + 12345) >>> 0; const x = (r % 60) - 30, z = ((r >>> 8) % 40) - 20; if (v.map.has(`${x},0,${z}`)) v.set(x, 1, z, (r >>> 16) % 3 ? C.white : C.yellow); }
+  });
+}
+function voxShelfDecor(seed) {
+  return vox(0.08, (v) => {
+    v.box(-8, 0, -1, 17, 1, 4, C.woodDark); let r = hash(seed);
+    for (let x = -7; x < 8;) { r = (r * 1103515245 + 12345) >>> 0; const kind = r % 4;
+      if (kind === 0) { v.ell(x + 1, 3, 1, 1, 2, 1, 0x7fae6a); v.set(x, 3, 0, 0x111111); v.set(x + 2, 3, 0, 0x111111); x += 4; }          // green plush
+      else if (kind === 1) { v.box(x, 1, 0, 2, 3, 2, C.white); v.set(x, 3, -1, 0x111111); v.set(x + 1, 3, -1, 0x111111); x += 3; }        // white plush
+      else if (kind === 2) { for (let b = 0; b < 3; b++) { r = (r * 1103515245 + 12345) >>> 0; v.box(x + b, 1, 0, 1, 3 + r % 2, 2, BOOK_COLORS[r % BOOK_COLORS.length]); } x += 4; }
+      else { v.cyl(x + 1, 1, 1, 1, 2, C.terracotta); v.ell(x + 1, 4, 1, 1, 1, 1, C.leaf); x += 4; } }
+  });
+}
+function makePrint(seed) {
+  const c = document.createElement('canvas'); c.width = 96; c.height = 120; const ctx = c.getContext('2d'); let r = hash(seed);
+  ctx.fillStyle = '#f6f1e6'; ctx.fillRect(0, 0, 96, 120); ctx.strokeStyle = '#2a2a2e'; ctx.lineWidth = 6; ctx.strokeRect(3, 3, 90, 114);
+  ctx.strokeStyle = '#3f6f3a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(48, 100); ctx.lineTo(48, 30); ctx.stroke();
+  for (let i = 0; i < 6; i++) { r = (r * 1103515245 + 12345) >>> 0; const y = 35 + i * 11, side = i % 2 ? 1 : -1; ctx.fillStyle = ['#4f8a45', '#6fa85f', '#3c6b34'][r % 3]; ctx.beginPath(); ctx.ellipse(48 + side * 14, y, 14, 6, side * 0.5, 0, Math.PI * 2); ctx.fill(); }
+  if (r % 3 === 0) { ctx.fillStyle = '#e0473b'; ctx.beginPath(); ctx.arc(48, 28, 6, 0, Math.PI * 2); ctx.fill(); }
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.75), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }));
+}
+// ---- landscape: blocky trees, bushes and logs standing on the ground outside the platform
+const TREE_LEAF = [0x2fa89a, 0x35b8a8, 0x28998d, 0x3cc4b2];
+const TREE_BARK = [0x8b6b4a, 0x7a5c3f, 0x6b5137];
+function voxTree(seed) {
+  const h = hash(seed); const kind = h % 3;
+  const leaf = pick(TREE_LEAF, h, 3), bark = pick(TREE_BARK, h, 7);
+  const dark = new THREE.Color(leaf).multiplyScalar(0.82).getHex();
+  const t = 3 + ((h >>> 12) % 8);                                  // trunk height 3..10 voxels, per tree
+  return vox(0.16, (v) => {
+    const canopy = (x, y, z, w, ht, d) => { for (let j = 0; j < ht; j++) v.box(x, y + j, z, w, 1, d, j % 3 === 2 ? dark : leaf); };
+    if (kind === 0) {            // tall column
+      v.box(0, 0, 0, 2, t + 2, 2, bark);
+      canopy(-2, t + 1, -2, 6, 6 + ((h >>> 16) % 5), 6);
+    } else if (kind === 1) {     // broad with a side branch
+      v.box(0, 0, 0, 2, t + 1, 2, bark); v.box(2, t, 0, 2, 1, 2, bark);
+      canopy(-3, t + 2, -3, 8, 5 + ((h >>> 16) % 3), 8);
+      canopy(2, t - 1, -1, 4, 4, 4);
+    } else {                     // short and round
+      v.box(0, 0, 0, 2, Math.max(2, t - 2), 2, bark);
+      canopy(-2, Math.max(2, t - 2), -2, 6, 4 + ((h >>> 16) % 3), 6);
+    }
+    for (let i = 0; i < 3; i++) v.set(((h >>> (i * 3)) % 3) - 1, 0, ((h >>> (i * 4)) % 3) - 1, 0x3f8f4a);  // grass tufts
+  });
+}
+function voxBush(seed) {
+  const h = hash(seed); const g = pick([0x3f8f4a, 0x4aa155, 0x357f42], h, 2);
+  return vox(0.12, (v) => { v.box(0, 0, 0, 3, 2, 3, g); v.box(2, 0, 1, 3, 1, 2, g); v.box(-1, 0, 1, 2, 1, 2, g); v.set(1, 2, 1, g); });
+}
+function voxLog(seed) {
+  const h = hash(seed); const bark = pick(TREE_BARK, h, 5);
+  return vox(0.12, (v) => { v.box(0, 0, 0, 7, 3, 3, bark); v.box(7, 0, 0, 1, 3, 3, 0xd8c5a3); for (let i = 1; i < 7; i += 2) v.set(i, 3, 1, 0x3f8f4a); });
+}
+
+// 3x5 pixel font for neon signs
+const PIX_FONT = { S: ['111', '100', '111', '001', '111'], H: ['101', '101', '111', '101', '101'], I: ['111', '010', '010', '010', '111'], P: ['111', '101', '111', '100', '100'], T: ['111', '010', '010', '010', '010'], O: ['111', '101', '101', '101', '111'], K: ['101', '101', '110', '101', '101'], E: ['111', '100', '111', '100', '111'], N: ['101', '111', '111', '111', '101'], G: ['111', '100', '101', '101', '111'], ' ': ['000', '000', '000', '000', '000'] };
+const NEON_MAT = new THREE.MeshBasicMaterial({ vertexColors: true });                 // unlit, so it reads as glowing
+function voxText(str, color, unit = 0.06) {
+  const glyphs = [...str.toUpperCase()].map((ch) => PIX_FONT[ch] || PIX_FONT[' ']);
+  const rows = [0, 1, 2, 3, 4].map((r) => glyphs.map((g) => g[r]).join('0'));
+  const W = rows[0].length; const x0 = -Math.floor(W / 2);
+  const v = new Vox(unit); v.box(x0 - 2, -2, 0, W + 4, 9, 1, 0x1f1f24);                // dark backing plate
+  v.paint(x0, 0, 1, rows, { 1: color }, 'xy');
+  const g = new THREE.Group(); g.add(v.mesh(VOX_MAT));                                // plate, lit
+  const tube = new Vox(unit); tube.paint(x0, 0, 1, rows, { 1: color }, 'xy'); g.add(tube.mesh(NEON_MAT)); // tubes, unlit on top
+  return g;
+}
+function voxVine(seed) {
+  let r = hash(seed);
+  return vox(0.06, (v) => {
+    for (let k = 0; k < 4; k++) { r = (r * 1103515245 + 12345) >>> 0; const len = 9 + (r % 9), x = k * 2 - 3;
+      for (let i = 0; i < len; i++) { v.set(x + ((i >> 2) % 2), -i, 0, 0x3f8f4a); if (i % 3 === 1) { v.set(x + 1 + ((i >> 2) % 2), -i, 0, 0x6fb35a); v.set(x - 1 + ((i >> 2) % 2), -i - 1, 1, 0x4aa155); } } }
+  });
+}
+function makeWallText(text, { height = 0.26, color = '#e3e935', bg = '#24242a', font = '30px "Press Start 2P", monospace', border = true } = {}) {
+  const c = document.createElement('canvas'); const ctx = c.getContext('2d');
+  ctx.font = font; const pad = 26; const w = Math.ceil(ctx.measureText(text).width) + pad * 2, h = 64;
+  c.width = w; c.height = h; ctx.font = font;
+  ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(0, 0, w, h, 10); ctx.fill();
+  if (border) { ctx.strokeStyle = '#3a3a42'; ctx.lineWidth = 4; ctx.beginPath(); ctx.roundRect(2, 2, w - 4, h - 4, 9); ctx.stroke(); }
+  ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, w / 2, h / 2 + 2);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(height * (w / h), height), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, transparent: !border }));
+  m.castShadow = false; m.receiveShadow = false; return m;
+}
+function voxLogo(unit = 0.04) {
+  const W = Math.max(...LOGO.rows.map((r) => r.length)), H = LOGO.rows.length, x0 = -Math.floor(W / 2);
+  return vox(unit, (v) => {
+    v.box(x0 - 3, -3, -3, W + 6, H + 6, 3, 0x24242a);                      // dark mounting plate
+    v.box(x0 - 3, -3, -3, W + 6, 1, 4, 0x3a3a42); v.box(x0 - 3, H + 2, -3, W + 6, 1, 4, 0x3a3a42); // lip
+    LOGO.rows.forEach((row, y) => [...row].forEach((ch, x) => {
+      if (ch === '.') return;
+      v.box(x0 + x, H - 1 - y, 0, 1, 1, 3, LOGO.palette[ch.charCodeAt(0) - 97]);
+    }));
+  });
+}
+function makeFrame(seed) {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 160; const ctx = c.getContext('2d');
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.75), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }));
+  const f = { mesh, c, ctx, tex, seed }; drawBotanical(f); return f;
+}
+function drawBotanical(f) {
+  const { ctx, c } = f; let r = hash(f.seed);
+  ctx.fillStyle = '#f6f1e6'; ctx.fillRect(0, 0, c.width, c.height); ctx.strokeStyle = '#2a2a2e'; ctx.lineWidth = 8; ctx.strokeRect(4, 4, c.width - 8, c.height - 8);
+  ctx.strokeStyle = '#3f6f3a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(64, 135); ctx.lineTo(64, 40); ctx.stroke();
+  for (let i = 0; i < 6; i++) { r = (r * 1103515245 + 12345) >>> 0; const y = 45 + i * 15, side = i % 2 ? 1 : -1; ctx.fillStyle = ['#4f8a45', '#6fa85f', '#3c6b34'][r % 3]; ctx.beginPath(); ctx.ellipse(64 + side * 18, y, 18, 8, side * 0.5, 0, Math.PI * 2); ctx.fill(); }
+  if (r % 3 === 0) { ctx.fillStyle = '#e0473b'; ctx.beginPath(); ctx.arc(64, 36, 8, 0, Math.PI * 2); ctx.fill(); }
+  f.tex.needsUpdate = true;
+}
+function drawFrameChart(f, label, bins, color) {
+  const { ctx, c } = f; ctx.fillStyle = '#f6f1e6'; ctx.fillRect(0, 0, c.width, c.height); ctx.strokeStyle = '#2a2a2e'; ctx.lineWidth = 8; ctx.strokeRect(4, 4, c.width - 8, c.height - 8);
+  ctx.fillStyle = '#2a2a2e'; ctx.font = 'bold 13px "IBM Plex Mono", monospace'; ctx.textAlign = 'center'; ctx.fillText(label.slice(0, 14), 64, 30);
+  ctx.fillStyle = '#8b8378'; ctx.font = '10px "IBM Plex Mono", monospace'; ctx.fillText('tool calls · 30 min', 64, 44);
+  const max = Math.max(1, ...bins); const x0 = 16, w = (c.width - 32) / bins.length, base = 128, h = 68;
+  ctx.fillStyle = '#d9d2c4'; ctx.fillRect(x0, base, c.width - 32, 1);
+  bins.forEach((b, i) => { const bh = (b / max) * h; ctx.fillStyle = i === bins.length - 1 ? color : '#4f8a45'; ctx.fillRect(x0 + i * w + 0.5, base - bh, w - 1, bh); });
+  ctx.fillStyle = '#2a2a2e'; ctx.font = 'bold 12px "IBM Plex Mono", monospace'; ctx.fillText(`${bins.reduce((a, b) => a + b, 0)} calls`, 64, 146);
+  f.tex.needsUpdate = true;
+}
+function makeEaselScreen() {
+  const c = document.createElement('canvas'); c.width = 384; c.height = 288; const ctx = c.getContext('2d');
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.minFilter = THREE.LinearFilter;
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.04, 0.78), new THREE.MeshBasicMaterial({ map: tex }));
+  const e = { mesh, c, ctx, tex, draw(title, text) {
+    ctx.fillStyle = '#14100f'; ctx.fillRect(0, 0, c.width, c.height); ctx.fillStyle = '#2a2a2e'; ctx.fillRect(0, 0, c.width, 26);
+    ctx.fillStyle = '#f2c230'; ctx.font = 'bold 14px "IBM Plex Mono", monospace'; ctx.textAlign = 'left'; ctx.fillText(`▣ ${title}`.slice(0, 40), 8, 18);
+    ctx.fillStyle = '#d6e4d0'; ctx.font = '11px "IBM Plex Mono", monospace';
+    const lines = String(text || '').replace(/\r/g, '').split('\n').filter((l) => l.trim().length).slice(-18);
+    lines.forEach((l, i) => ctx.fillText(l.slice(0, 56), 8, 44 + i * 13.5));
+    if (!lines.length) { ctx.fillStyle = '#6b7280'; ctx.fillText('(no output yet)', 8, 60); }
+    tex.needsUpdate = true;
+  } };
+  e.draw('focused pane', ''); return e;
+}
+// voxel line for limbs: steps along the longest axis, `thick` widens it by one voxel
+function voxLine(v, [x0, y0, z0], [x1, y1, z1], c, thick = 1) {
+  const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), Math.abs(z1 - z0), 1);
+  for (let i = 0; i <= n; i++) {
+    const x = Math.round(x0 + (x1 - x0) * i / n), y = Math.round(y0 + (y1 - y0) * i / n), z = Math.round(z0 + (z1 - z0) * i / n);
+    v.set(x, y, z, c); if (thick > 1) { v.set(x + 1, y, z, c); v.set(x, y, z + 1, c); v.set(x + 1, y, z + 1, c); }
+  }
+}
+// Rocky: a stone dome on five jointed legs, knees raised above the shell, green spots. The stone is tinted toward the kind's colour.
+function makeMascot(kind) {
+  const hex = KIND_COLORS[kind] || (hash(kind) & 0xffffff); const group = new THREE.Group();
+  const brand = new THREE.Color(hex); const stone = new THREE.Color(0x8b6b4a).lerp(brand, 0.82).getHex();   // brand-led, a touch of stone
+  const dark = new THREE.Color(stone).multiplyScalar(0.7).getHex(), light = new THREE.Color(stone).lerp(new THREE.Color(0xffffff), 0.18).getHex();
+  const hsl = {}; brand.getHSL(hsl);
+  const dHue = Math.abs((((hsl.h * 360 - 120) % 360) + 540) % 360 - 180);                                    // angular distance from green (120°)
+  const brandIsGreen = hsl.s > 0.25 && dHue < 45;
+  const green = brandIsGreen ? 0xf4efe4 : 0x3fae5a;                                                          // patches stay legible on green brands
+  let r = hash(kind);
+  const body = vox(0.045, (v) => {
+    v.ell(0, 7, 0, 3, 2, 3, stone); v.box(-2, 9, -2, 5, 1, 5, light);              // carapace with a flatter cap
+    v.box(-1, 5, -1, 3, 1, 3, dark);                                                 // underside
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + 0.3, ca = Math.cos(a), sa = Math.sin(a);
+      const hip = [Math.round(ca * 2), 7, Math.round(sa * 2)], knee = [Math.round(ca * 5), 10, Math.round(sa * 5)], foot = [Math.round(ca * 7), 0, Math.round(sa * 7)];
+      voxLine(v, hip, knee, stone, 2);                                               // upper leg rises to the knee
+      voxLine(v, knee, foot, dark, 1);                                               // lower leg drops to the ground
+      v.set(foot[0], 0, foot[2], dark); v.set(foot[0] + (ca > 0 ? 1 : -1), 0, foot[2], dark);   // foot pad
+      v.set(knee[0], 10, knee[2], green); v.set(knee[0] + 1, 10, knee[2], green);               // a green patch on every knee, as in the film
+    }
+    for (let i = 0; i < 6; i++) { r = (r * 1103515245 + 12345) >>> 0; const x = (r % 7) - 3, z = ((r >>> 8) % 7) - 3, y = 6 + ((r >>> 16) % 4); if (v.map.has(`${x},${y},${z}`)) { v.set(x, y, z, green); v.set(x + 1, y, z, green); } }  // 2-voxel patches on the shell
+  });
+  group.add(body);
+  const label = makeTextSprite(kind, { font: '600 22px "IBM Plex Mono", monospace', height: 0.16, bg: 'rgba(27,27,30,0.9)', border: '#' + brand.getHexString() }); label.position.set(0, -0.16, -0.34); group.add(label);
+  return { group, body, label, active: false, row: 0, phase: Math.random() * 6 };
+}
+const DAY_KEYS = [
+  { h: 0, sun: 0x8f9fd8, sunI: 1.1, hemi: 0.6, amb: 0.2, pane: 0x2c3a63, paneE: 0.5, beam: 0.15, fill: 0.4 },
+  { h: 5, sun: 0x8f9fd8, sunI: 1.1, hemi: 0.6, amb: 0.2, pane: 0x2c3a63, paneE: 0.5, beam: 0.15, fill: 0.4 },
+  { h: 7, sun: 0xffd6b0, sunI: 1.8, hemi: 0.7, amb: 0.2, pane: 0xffe4c8, paneE: 0.8, beam: 0.7, fill: 0.6 },
+  { h: 10, sun: 0xfff0d2, sunI: 2.6, hemi: 0.85, amb: 0.22, pane: 0xfff6dc, paneE: 0.9, beam: 1.0, fill: 0.7 },
+  { h: 16, sun: 0xfff0d2, sunI: 2.6, hemi: 0.85, amb: 0.22, pane: 0xfff6dc, paneE: 0.9, beam: 1.0, fill: 0.7 },
+  { h: 19, sun: 0xffb070, sunI: 2.0, hemi: 0.65, amb: 0.2, pane: 0xffc98a, paneE: 0.9, beam: 0.9, fill: 0.5 },
+  { h: 21, sun: 0xa89fd0, sunI: 1.3, hemi: 0.62, amb: 0.2, pane: 0x4a4a7a, paneE: 0.6, beam: 0.3, fill: 0.45 },
+  { h: 24, sun: 0x8f9fd8, sunI: 1.1, hemi: 0.6, amb: 0.2, pane: 0x2c3a63, paneE: 0.5, beam: 0.15, fill: 0.4 },
+];
+function applyTimeOfDay(hour) {
+  let a = DAY_KEYS[0], b = DAY_KEYS[1]; for (let i = 0; i < DAY_KEYS.length - 1; i++) if (hour >= DAY_KEYS[i].h && hour <= DAY_KEYS[i + 1].h) { a = DAY_KEYS[i]; b = DAY_KEYS[i + 1]; break; }
+  const t = b.h === a.h ? 0 : (hour - a.h) / (b.h - a.h); const mix = (x, y) => lerp(x, y, t); const col = (x, y) => new THREE.Color(x).lerp(new THREE.Color(y), t);
+  sun.color.copy(col(a.sun, b.sun)); sun.intensity = mix(a.sunI, b.sunI); hemi.intensity = mix(a.hemi, b.hemi); amb.intensity = mix(a.amb, b.amb); fill.intensity = mix(a.fill, b.fill);
+  if (office.paneMat) { office.paneMat.color.copy(col(a.pane, b.pane)); office.paneMat.emissive.copy(col(a.pane, b.pane)); office.paneMat.emissiveIntensity = mix(a.paneE, b.paneE); }
+  const k = mix(a.beam, b.beam); for (const m of office.beamMats) m.opacity = m.userData.base * k; if (office.stripeMat) office.stripeMat.opacity = office.stripeMat.userData.base * k;
+}
+function makePlankTexture() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 256; const ctx = c.getContext('2d');
+  const tones = THEME.planks; let r = 7;
+  for (let row = 0; row < 8; row++) { const h = 32; let x = (row % 2) * 96 - 128; while (x < 256) { r = (r * 1103515245 + 12345) >>> 0; const len = 120 + (r % 100); ctx.fillStyle = tones[r % tones.length]; ctx.fillRect(x, row * h, len, h); ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(x, row * h, 2, h); ctx.fillRect(x, row * h + h - 2, len, 2); ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(x + 2, row * h + 2, len - 4, 3); x += len; } }
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.anisotropy = 8; return tex;
+}
+function makeStripeTexture() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64; const ctx = c.getContext('2d');
+  ctx.fillStyle = 'rgba(0,0,0,0)'; ctx.fillRect(0, 0, 256, 64); ctx.fillStyle = '#ffffff'; for (let x = 0; x < 256; x += 32) ctx.fillRect(x, 0, 18, 64);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = THREE.RepeatWrapping; return tex;
+}
+
+// ---------------------------------------------------------------------- desk
+class Desk {
+  constructor(paneId) {
+    this.id = paneId; this.group = new THREE.Group(); this.group.userData.paneId = paneId; this.pickables = [];
+    this.body = voxDesk(); this.group.add(this.body);
+    this.screen = new Screen();
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.46), new THREE.MeshBasicMaterial({ map: this.screen.tex })); face.position.set(-0.12, 1.24, -0.228); this.group.add(face);
+    this.lampMat = new THREE.MeshStandardMaterial({ color: C.orange, emissive: 0x000000, emissiveIntensity: 1.2, roughness: 0.5 });
+    const head = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.16, 12, 1, true), this.lampMat); head.position.set(-0.26, 1.36, -0.12); head.rotation.z = 2.6; head.castShadow = true; this.group.add(head);
+    this.light = new THREE.PointLight(0xffffff, 0, 3.5, 2); this.light.position.set(-0.26, 1.25, 0); this.group.add(this.light);
+    this.kb = vox(0.08, (v) => { for (let x = -4; x < 4; x++) for (let z = 2; z < 4; z++) v.set(x, 0, z, (x + z) % 2 ? 0x2c2c33 : 0x484852); v.box(5, 0, 3, 1, 1, 1, C.dark); }); this.kb.position.set(0, 0.8, 0); this.group.add(this.kb);   // flat slab, two-tone checker reads as keys
+    // backlit key caps that flash in time with the sitter's taps: left half for the left hand, right half for the right
+    this.keys = []; const keyMat = () => new THREE.MeshBasicMaterial({ color: 0xdfe9ff, transparent: true, opacity: 0 });
+    for (let x = -4; x < 4; x++) for (let z = 2; z < 4; z++) { const k = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.02, 0.07), keyMat()); k.position.set((x + 0.5) * 0.08, 0.8 + 0.085, (z + 0.5) * 0.08); k.userData.side = x < 0 ? 'L' : 'R'; k.castShadow = false; this.group.add(k); this.keys.push(k); }
+    this.keyBeat = { L: 0, R: 0 };
+    this.chair = voxOfficeChair(); this.chair.position.set(0, 0.04, 0.60); this.group.add(this.chair);
+    this.ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.24, 48), new THREE.MeshBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false })); this.ring.rotation.x = -Math.PI / 2; this.ring.position.set(0, 0.02, 0.25); this.group.add(this.ring);
+    this.laptop = vox(0.08, (v) => { v.box(-2, 0, -2, 5, 1, 4, C.chrome); v.box(-2, 1, -2, 5, 4, 1, C.dark); }); this.laptop.position.set(0.05, 0.8, 0.15); this.group.add(this.laptop);
+    this.mug = vox(0.08, (v) => { v.cyl(0, 0, 0, 1, 2, C.yellow); v.set(2, 1, 0, C.yellow); }); this.mug.position.set(0.3, 0.8, -0.1); this.group.add(this.mug);
+    this.papers = []; this.floorPapers = []; this.label = null; this.state = 'unknown'; this.hasAgent = false; this.focused = false; this.aisleZ = 0;
+    this.group.traverse((o) => { if (o.isMesh) { o.userData.paneId = paneId; this.pickables.push(o); } });
+    this.targetPos = new THREE.Vector3(); this.placed = false;
+  }
+  tapKeys(dt, beat, burst = 1, reach = 0) {
+    // one flash per downstroke, counted from the beat so no stroke is missed at low frame rates; each hand is half a beat apart
+    if (beat != null) for (const side of ['L', 'R']) {
+      const n = Math.floor((beat + (side === 'R' ? Math.PI * 0.86 : 0)) / (Math.PI * 2));
+      if (this.keyBeat[side] !== n) { this.keyBeat[side] = n; if (burst > 0.35) { const pool = this.keys.filter((k) => k.userData.side === side); pool[Math.floor(Math.random() * pool.length)].material.opacity = 1; } }
+    }
+    if (reach > 0.5 && !this.enterLit) { this.enterLit = true; for (const k of this.keys) if (k.userData.side === 'R') k.material.opacity = 0.9; }   // the Enter reach lights the right block
+    if (reach < 0.2) this.enterLit = false;
+    for (const k of this.keys) if (k.material.opacity > 0) k.material.opacity = Math.max(0, k.material.opacity - dt * 3.2);
+  }
+  seatWorld() { return { x: this.targetPos.x, z: this.targetPos.z + 0.60, yaw: 0, seatH: 0.57 }; }   // chair seat top: 0.53 + chair lift 0.04; close enough to reach the keys
+  addPaper() {
+    if (this.papers.length >= 6) { if (this.floorPapers.length >= 8) return; const f = box(0.26, 0.01, 0.19, PAPER, { castShadow: false }); f.position.set(this.targetPos.x + (Math.random() - 0.5) * 1.8, 0.012, this.targetPos.z + 1.0 + Math.random() * 0.9); f.rotation.y = Math.random() * Math.PI; scene.add(f); this.floorPapers.push(f); return; }
+    const p = box(0.26, 0.012, 0.19, PAPER, { castShadow: false }); p.position.set(0.55 + (Math.random() - 0.5) * 0.08, 0.8 + this.papers.length * 0.013, -0.2 + (Math.random() - 0.5) * 0.08); p.rotation.y = (Math.random() - 0.5) * 0.4; this.group.add(p); this.papers.push(p); }
+  clearPapers() { for (const p of this.papers) this.group.remove(p); this.papers = []; for (const f of this.floorPapers) scene.remove(f); this.floorPapers = []; }
+  setPane(p) {
+    this.pane = p; this.hasAgent = !!p.agent; this.state = this.hasAgent ? (p.agent_status || 'unknown') : 'unknown'; this.focused = !!p.focused;
+    const col = STATE[this.state] || STATE.unknown; const lit = this.hasAgent && this.state !== 'unknown';
+    this.lampMat.emissive.setHex(lit ? col.hex : 0x000000); this.lampMat.color.setHex(lit ? col.hex : C.orange); this.light.color.setHex(col.hex);
+    this.light.intensity = this.state === 'working' ? 1.2 : this.state === 'blocked' ? 2.0 : lit ? 0.5 : 0;
+    this.laptop.visible = !this.hasAgent; this.mug.visible = !this.hasAgent; this.kb.visible = this.hasAgent; // the laptop stands where the keyboard is
+    if (this.hasAgent) { if (this.label) { this.group.remove(this.label); this.label = null; } return; }
+    const labelText = `${p.cwdName}`;
+    if (!this.label || this.label.userData.text !== labelText) { if (this.label) this.group.remove(this.label); this.label = makeTextSprite(labelText, { color: '#d9d4ca', bg: 'rgba(27,27,30,0.7)', height: 0.3 }); this.label.position.set(0, 1.85, -0.1); this.group.add(this.label); }
+  }
+  update(dt, t) {
+    this.screen.update(dt, this.state);
+    const ringTarget = this.focused ? 0.6 + Math.sin(t * 4) * 0.25 : 0; this.ring.material.opacity = damp(this.ring.material.opacity, ringTarget, 8, dt);
+    if (this.state === 'blocked') this.light.intensity = 1.5 + Math.sin(t * 6) * 0.9;
+    if (!this.placed) { this.group.position.copy(this.targetPos); this.placed = true; } else { this.group.position.lerp(this.targetPos, 1 - Math.exp(-6 * dt)); }
+  }
+  dispose() { this.clearPapers(); this.group.parent && this.group.parent.remove(this.group); }
+}
+
+// ---------------------------------------------------------------------- bank (one workspace = one bank of desks)
+class Bank {
+  constructor(wsId, index) {
+    this.id = wsId; this.group = new THREE.Group(); this.hue = ROOM_HUES[index % ROOM_HUES.length]; this.size = { w: 0, d: 0 };
+    this.rugHex = new THREE.Color().setHSL(this.hue / 360, 0.35, 0.5).getHex(); this.label = null; this.labelStatus = null; this.targetPos = new THREE.Vector3(); this.placed = false;
+  }
+  build(w, d, labelText, status) {
+    if (this.size.w !== w || this.size.d !== d) {
+      this.group.clear(); this.size = { w, d }; this.label = null;
+      const vw = Math.round((w - 0.3) / 0.1), vd = Math.round((d - 0.3) / 0.1);
+      const rug = vox(0.1, (v) => { v.roundRect(-Math.floor(vw / 2), 0, -Math.floor(vd / 2), vw, vd, 4, this.rugHex); v.roundRect(-Math.floor(vw / 2) + 2, 0, -Math.floor(vd / 2) + 2, vw - 4, vd - 4, 3, this.rugHex, 1); }); rug.position.set(0, 0.0, 0.1); this.group.add(rug);
+      const bin = vox(0.08, (v) => { v.cyl(0, 0, 0, 1, 4, 0xd9d4ca); v.set(0, 3, 0, C.paper); }); bin.position.set(w / 2 - 0.25, 0, -d / 2 + 0.5); this.group.add(bin);
+      this.plant = voxPlant(true); this.plant.position.set(-w / 2 + 0.35, 0, -d / 2 + 0.45); this.plant.scale.setScalar(0.65); this.group.add(this.plant);
+    }
+    if (!this.label || this.label.userData.text !== labelText || this.labelStatus !== status) { if (this.label) this.group.remove(this.label); this.labelStatus = status; const c = STATE[status] ? STATE[status].css : '#8b93a7'; this.label = makeTextSprite(labelText.toUpperCase(), { font: '24px "Press Start 2P", monospace', color: '#1b1b1e', bg: 'rgba(250,248,244,0.95)', height: 0.55, border: c }); this.label.position.set(0, 3.0, -d / 2 + 0.3); this.group.add(this.label); }
+  }
+  setActivity(n) { if (this.plant) this.plant.scale.setScalar(0.65 + Math.min(0.6, n / 150)); }
+  update(dt) { if (!this.placed) { this.group.position.copy(this.targetPos); this.placed = true; } else this.group.position.lerp(this.targetPos, 1 - Math.exp(-6 * dt)); }
+}
+
+// ---------------------------------------------------------------------- office shell
+class Office {
+  constructor() { this.group = new THREE.Group(); this.size = { w: 0, d: 0 }; this.planks = makePlankTexture(); this.stripes = makeStripeTexture(); this.spots = { lounge: [], meeting: [], queue: [], bed: [], door: null, counter: null }; this.corridorX = 0; this.loungeTopZ = 0; this.lastAisleZ = 0; this.sunDir = new THREE.Vector3(-0.3, -0.72, 0.62).normalize(); this.frames = []; this.beamMats = []; this.paneMat = null; this.stripeMat = null; this.mascots = new Map(); this.mascotGroup = null; this.kindsKey = ''; this.easel = null; this.version = 0; this.ox = 0; this.oz = 0; }
+  build(w, d, loungeD) {
+    if (this.size.w === w && this.size.d === d && this.builtTheme === themeKey) return; this.size = { w, d }; this.builtTheme = themeKey; this.version++; this.planks = makePlankTexture(); this.group.clear();
+    const H = 3.4, T = 0.3; const WALL = stdMat(THEME.wall);
+    // floor: planks on a dark plinth
+    const tex = this.planks.clone(); tex.needsUpdate = true; tex.repeat.set(w / 2, d / 2);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.75 })); floor.rotation.x = -Math.PI / 2; floor.position.y = 0.001; floor.receiveShadow = true; this.group.add(floor);
+    const plinth = box(w + 0.6, 0.46, d + 0.6, stdMat(THEME.plinth)); plinth.position.y = -0.5; this.group.add(plinth);
+    // walls (back + left), no shadow casting so the window light reaches the floor
+    const noShadow = (m) => { m.castShadow = false; return m; };
+    const wx0 = w * 0.08, wx1 = w / 2 - 0.9, wy0 = 0.95, wy1 = H - 0.55; const ww = wx1 - wx0, wh = wy1 - wy0; const wallZ = -d / 2 - T / 2;
+    const wallPiece = (x0, x1, y0, y1) => { const m = noShadow(box(x1 - x0, y1 - y0, T, WALL)); m.position.set((x0 + x1) / 2, y0, wallZ); this.group.add(m); };
+    wallPiece(-w / 2 - T, wx0 - 0.12, 0, H); wallPiece(wx1 + 0.12, w / 2 + T, 0, H);            // either side of the window
+    wallPiece(wx0 - 0.12, wx1 + 0.12, 0, wy0 - 0.08); wallPiece(wx0 - 0.12, wx1 + 0.12, wy1 + 0.08, H); // below and above it
+    const wl = noShadow(box(T, H, d + T, WALL)); wl.position.set(-w / 2 - T / 2, 0, 0); this.group.add(wl);
+    // cornice (stepped) and skirting, white; thick end caps on the open edges
+    for (const [sx, sy, sz, px, py, pz] of [[w + T * 2 + 0.2, 0.14, T + 0.2, 0, H - 0.14, -d / 2 - T / 2], [w + T * 2 + 0.3, 0.1, T + 0.36, 0, H - 0.04, -d / 2 - T / 2], [T + 0.2, 0.14, d + T + 0.2, -w / 2 - T / 2, H - 0.14, 0], [T + 0.36, 0.1, d + T + 0.3, -w / 2 - T / 2, H - 0.04, 0], [w + T * 2, 0.18, T + 0.12, 0, 0, -d / 2 - T / 2], [T + 0.12, 0.18, d + T, -w / 2 - T / 2, 0, 0]]) { const m = noShadow(box(sx, sy, sz, WHITE)); m.position.set(px, py, pz); this.group.add(m); }
+    const capL = noShadow(box(T + 0.2, H + 0.08, 0.35, WHITE)); capL.position.set(-w / 2 - T / 2, 0, d / 2 + 0.05); this.group.add(capL);
+    const capB = noShadow(box(0.35, H + 0.08, T + 0.2, WHITE)); capB.position.set(w / 2 + 0.05, 0, -d / 2 - T / 2); this.group.add(capB);
+    // bay window set through the opening: frame bars span the wall thickness, pane is visible from both sides,
+    // lace valance and drapes hang on the room side only
+    const wz = -d / 2 + 0.03; const D = Math.round((T + 0.1) / 0.08) + 1;                       // bar depth in voxels, through the wall
+    this.paneMat = new THREE.MeshStandardMaterial({ color: 0xfff6dc, emissive: 0xfff1cc, emissiveIntensity: 0.9, roughness: 1, side: THREE.DoubleSide });
+    const pane = new THREE.Mesh(new THREE.PlaneGeometry(ww + 0.24, wh + 0.16), this.paneMat); pane.position.set((wx0 + wx1) / 2, (wy0 + wy1) / 2, wallZ); this.group.add(pane);
+    const frame = vox(0.08, (v) => {
+      const W = Math.round(ww / 0.08), Hh = Math.round(wh / 0.08);
+      v.box(0, 0, 0, W, 1, D, C.white); v.box(0, Hh - 1, 0, W, 1, D, C.white); v.box(0, 0, 0, 1, Hh, D, C.white); v.box(W - 1, 0, 0, 1, Hh, D, C.white);
+      const n = Math.max(2, Math.round(ww / 1.3)); for (let i = 1; i < n; i++) v.box(Math.round((W * i) / n), 0, 0, 1, Hh, D, C.white); v.box(0, Math.round(Hh * 0.62), 0, W, 1, D, C.white);
+      const zi = D - 1;                                                                      // room-side decor starts at the inner face
+      for (let x = 0; x < W; x += 2) { v.box(x, Hh, zi, 2, 3, 3, C.white); v.box(x, Hh - 1, zi, 1, 1, 3, C.white); } // scalloped lace valance
+      v.box(-2, 0, zi, 2, Hh + 3, 3, C.cream); v.box(W, 0, zi, 2, Hh + 3, 3, C.cream); for (let y = 0; y < Hh; y += 2) { v.set(-1, y, zi + 3, C.white); v.set(W, y, zi + 3, C.white); } // drapes
+    }); frame.position.set(wx0, wy0, wz - T - 0.05); this.group.add(frame);
+    const sillOut = box(ww + 0.4, 0.1, 0.22, WHITE); sillOut.position.set((wx0 + wx1) / 2, wy0 - 0.1, wallZ - T / 2 - 0.06); this.group.add(sillOut);
+    const sill = box(ww + 0.4, 0.1, 0.3, WHITE); sill.position.set((wx0 + wx1) / 2, wy0 - 0.1, wz + 0.1); this.group.add(sill);
+    // sun shafts through the window (additive translucent beams) and light stripes on the floor
+    const beamMat = new THREE.MeshBasicMaterial({ color: 0xfff1c4, transparent: true, opacity: 0.09, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const nB = Math.max(2, Math.round(ww / 1.3)); const dir = this.sunDir; const len = (wy1 - 0.02) / -dir.y;
+    for (let i = 0; i < nB; i++) {
+      const x0 = wx0 + (ww * i) / nB + 0.08, x1 = wx0 + (ww * (i + 1)) / nB - 0.08;
+      for (const [y, opacity] of [[wy1, 0.09], [wy0 + wh * 0.62, 0.05]]) {
+        const L = (y - 0.02) / -dir.y; const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute([x0, y, wz, x1, y, wz, x1 + dir.x * L, 0.02, wz + dir.z * L, x0, y, wz, x1 + dir.x * L, 0.02, wz + dir.z * L, x0 + dir.x * L, 0.02, wz + dir.z * L], 3)); g.computeVertexNormals();
+        const bm = beamMat.clone(); bm.opacity = opacity; bm.userData.base = opacity; this.beamMats.push(bm); this.group.add(new THREE.Mesh(g, bm));
+      }
+    }
+    this.stripeMat = new THREE.MeshBasicMaterial({ map: this.stripes, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }); this.stripeMat.userData.base = 0.16;
+    const stripes = new THREE.Mesh(new THREE.PlaneGeometry(ww * 1.1, len * Math.hypot(dir.x, dir.z) * 0.9), this.stripeMat); this.stripes.repeat.set(nB * 1.0, 1);
+    stripes.rotation.x = -Math.PI / 2; stripes.rotation.z = -Math.atan2(dir.x, dir.z) * 0; stripes.position.set((wx0 + wx1) / 2 + dir.x * len * 0.5, 0.012, wz + dir.z * len * 0.5); this.group.add(stripes);
+    // gallery wall of botanical prints on the left part of the back wall, plus a tall butterfly-style print beside the window
+    const gx = -w / 2 + 1.2; const cols = Math.max(2, Math.min(4, Math.floor((wx0 - 0.8 - gx) / 0.9)));
+    this.frames = [];
+    for (let j = 1; j >= 0; j--) for (let i = 0; i < cols; i++) { const f = makeFrame(`${i}-${j}`); f.mesh.position.set(gx + i * 0.9, 2.0 + j * 0.85 - (i % 2) * 0.1, -d / 2 + 0.01); f.mesh.scale.setScalar(j ? 0.85 : 1); this.group.add(f.mesh); this.frames.push(f); }
+    // wall shelves with plush toys and books on the left wall
+    for (let i = 0; i < 2; i++) { const s = voxShelfDecor(`shelf-${i}`); s.rotation.y = Math.PI / 2; s.position.set(-w / 2 + 0.2, 1.7 + i * 0.6, -d / 2 + 0.95 + i * 0.3); this.group.add(s); }
+    // ---- lounge (front-left)
+    const z0 = d / 2 - loungeD; const lx = -w / 2;
+    const rug = voxRugBlob('rug'); rug.position.set(lx + 3.3, 0.005, z0 + 2.7); this.group.add(rug);
+    const sofaPos = { x: lx + 1.7, z: z0 + 1.1 }; const sofa = voxSofa(); sofa.position.set(sofaPos.x, 0, sofaPos.z); this.group.add(sofa);
+    const table = voxCoffeeTable(); table.position.set(lx + 1.8, 0, z0 + 2.6); this.group.add(table);
+    const armPos = { x: lx + 3.6, z: z0 + 3.6 }; const arm = voxArmchair(); arm.position.set(armPos.x, 0, armPos.z); arm.rotation.y = Math.PI * 0.72; this.group.add(arm);
+    const shelfL = voxBookshelf(2, 3, 'left'); shelfL.position.set(lx + 0.26, 0, z0 - 0.6); shelfL.rotation.y = Math.PI / 2; this.group.add(shelfL);
+    const shelfF = voxBookshelf(4, 2, 'front'); shelfF.position.set(lx + 7.3, 0, d / 2 - 0.5); this.group.add(shelfF);
+    const p1 = voxPlant(true); p1.position.set(w / 2 - 0.6, 0, -d / 2 + 0.6); this.group.add(p1);
+    const p2 = voxPlant(true); p2.position.set(lx + 2.4, 0, d / 2 - 0.5); this.group.add(p2);
+    const bed = vox(0.08, (v) => { v.box(-7, 0, -13, 14, 3, 26, C.woodDark); v.box(-6, 3, -12, 12, 2, 24, C.white); v.box(-6, 5, -12, 12, 2, 18, C.knit); for (let x = -5; x < 6; x += 2) for (let z = -11; z < 5; z += 2) v.set(x, 6, z, 0x7fae6a); v.box(-5, 5, 7, 10, 2, 4, C.paper); v.box(-7, 3, 13, 14, 8, 1, C.woodDark); v.box(-7, 3, -14, 14, 5, 1, C.woodDark); });
+    const bedPos = { x: lx + 0.95, z: d / 2 - 1.8 }; bed.position.set(bedPos.x, 0, bedPos.z); this.group.add(bed);
+    this.spots.bed = [{ id: 'bed', x: bedPos.x, z: bedPos.z + 0.1, yaw: Math.PI, sit: false, lie: true, seatH: 0.62, via: { x: bedPos.x + 1.0, z: bedPos.z - 1.6 } }];
+    this.mascotGroup = new THREE.Group(); this.mascotGroup.position.set(-w / 2 + 0.30, 1.55, z0 + 2.4); this.mascotGroup.rotation.y = -Math.PI / 2; this.group.add(this.mascotGroup); this.kindsKey = '';
+    const p3 = voxPlant(false); p3.position.set(sofaPos.x + 1.32, 0, sofaPos.z + 0.05); this.group.add(p3);   // on the floor by the sofa's arm
+    const cab = vox(0.08, (v) => { v.box(-4, 0, -3, 9, 11, 6, C.white); v.box(-2, 11, -2, 4, 5, 4, C.black); v.set(0, 12, -3, C.chrome); v.box(2, 11, 0, 2, 2, 2, C.white); v.box(-4, 11, 1, 1, 1, 1, C.yellow); }); cab.position.set(lx + 0.6, 0, z0 + 1.0); this.group.add(cab);
+    const easel = new THREE.Group(); easel.add(vox(0.08, (v) => { v.box(-6, 0, 0, 1, 24, 1, C.woodDark); v.box(6, 0, 0, 1, 24, 1, C.woodDark); v.box(-6, 8, 0, 13, 1, 1, C.woodDark); v.box(0, 0, 4, 1, 22, 1, C.woodDark); v.box(-7, 9, -1, 15, 11, 1, C.white); }));
+    this.easel = makeEaselScreen(); this.easel.mesh.position.set(0, 1.16, -0.085); this.easel.mesh.rotation.y = Math.PI; easel.add(this.easel.mesh); easel.position.set(lx + 5.6, 0, z0 + 0.6); easel.rotation.y = Math.PI + 0.55; this.group.add(easel);
+    this.spots.lounge = [
+      { id: 'sofa-0', x: sofaPos.x - 0.45, z: sofaPos.z + 0.12, yaw: Math.PI, sit: true, seatH: 0.54, via: { x: sofaPos.x - 0.45, z: sofaPos.z + 0.95 } },
+      { id: 'sofa-1', x: sofaPos.x + 0.45, z: sofaPos.z + 0.12, yaw: Math.PI, sit: true, seatH: 0.54, via: { x: sofaPos.x + 0.45, z: sofaPos.z + 0.95 } },
+      { id: 'armchair', x: armPos.x, z: armPos.z, yaw: Math.PI * 0.72, sit: true, seatH: 0.48, via: { x: armPos.x + 1.0, z: armPos.z - 0.9 } },
+      // standing spots on open floor, each at least a metre from any seat and from each other
+      { id: 'coffee-0', x: lx + 1.3, z: z0 + 0.3, yaw: Math.PI * 0.5, sit: false },        // at the coffee machine, behind the sofa
+      { id: 'coffee-1', x: lx + 4.7, z: z0 + 1.5, yaw: Math.PI * 0.5, sit: false },        // by the easel, looking into the lounge
+      { id: 'coffee-2', x: lx + 5.0, z: z0 + 3.4, yaw: Math.PI * 0.55, sit: false },       // right of the armchair
+      { id: 'coffee-3', x: lx + 2.4, z: z0 + 4.7, yaw: -Math.PI * 0.85, sit: false },      // front of the rug, clear of the bed
+    ];
+    // ---- meeting table
+    const mtPos = { x: lx + Math.min(w - 4.2, 8.6), z: z0 + loungeD * 0.45 };
+    const mt = vox(0.08, (v) => { v.box(-20, 9, -8, 41, 1, 17, C.white); v.box(-17, 0, -5, 2, 9, 11, C.white); v.box(15, 0, -5, 2, 9, 11, C.white); v.cyl(0, 10, 0, 2, 1, C.wood); v.set(0, 11, 0, C.orange); v.set(-1, 11, 0, C.orange); v.set(1, 11, -1, C.orange); v.box(-12, 10, 3, 4, 1, 3, C.paper); v.box(9, 10, -6, 4, 1, 3, C.paper); v.cyl(6, 10, 4, 1, 2, C.white); });
+    mt.position.set(mtPos.x, 0, mtPos.z); this.group.add(mt);
+    this.spots.meeting = [];
+    for (let i = 0; i < 3; i++) for (const side of [-1, 1]) { const ch = voxChair(); const cxr = mtPos.x - 1.0 + i * 1.0; ch.position.set(cxr, 0, mtPos.z + side * 1.0); ch.rotation.y = side > 0 ? 0 : Math.PI; this.group.add(ch); const via = side < 0 ? { x: cxr, z: mtPos.z - 1.9 } : [{ x: mtPos.x + 2.4, z: mtPos.z - 1.9 }, { x: mtPos.x + 2.4, z: mtPos.z + 1.9 }, { x: cxr, z: mtPos.z + 1.9 }]; this.spots.meeting.push({ id: `mt-${i}-${side}`, x: cxr, z: mtPos.z + side * 1.0, yaw: side > 0 ? 0 : Math.PI, sit: true, seatH: 0.48, via }); }
+    // ---- help desk (front-right) with a queue in front of it, and the door beside it
+    const hx = w / 2 - 1.6, hz = d / 2 - 1.1;
+    const counter = vox(0.08, (v) => { v.box(-14, 0, -4, 28, 13, 9, C.white); v.box(-15, 13, -5, 30, 1, 11, C.black); v.ell(8, 14, 0, 1, 1, 1, C.yellow); v.box(-9, 14, 1, 6, 4, 1, C.dark); v.box(-2, 14, 0, 3, 1, 2, C.paper); v.cyl(4, 14, 1, 1, 2, C.white); });
+    counter.position.set(hx, 0, hz); this.group.add(counter);
+    const sign = makeTextSprite('HELP DESK', { font: '22px "Press Start 2P", monospace', color: '#f4f2ee', bg: '#1b1b1e', height: 0.42 }); sign.position.set(hx, 1.8, hz); this.group.add(sign);
+    this.spots.counter = { x: hx, z: hz };
+    this.spots.queue = Array.from({ length: 8 }, (_, i) => ({ id: `q-${i}`, x: hx - 0.2 + (i % 2) * 0.1, z: hz - 0.95 - i * 0.7, yaw: Math.PI, sit: false }));
+    const doorX = w / 2 - 0.35, doorZ = d / 2 - 3.6;
+    const door = vox(0.08, (v) => { v.box(0, 0, -8, 4, 29, 16, C.white); v.box(1, 0, -7, 2, 27, 14, C.yellow); v.box(1, 5, -6, 1, 8, 5, 0xd9a920); v.box(1, 15, -6, 1, 8, 5, 0xd9a920); v.set(0, 13, 5, C.chrome); }); door.position.set(doorX, 0, doorZ); this.group.add(door);
+    const mat = vox(0.1, (v) => v.roundRect(-5, 0, -4, 10, 8, 2, 0x6b5b52)); mat.position.set(doorX - 0.7, 0.005, doorZ); this.group.add(mat);
+    this.spots.door = { x: doorX - 0.5, z: doorZ, yaw: Math.PI / 2 };
+    this.corridorX = w / 2 - CORRIDOR_W / 2 - 0.2; this.loungeTopZ = z0 - 0.5;
+    // geometry is modelled centred on the origin; pin the back-left corner to (0,0) so the room grows
+    // outward instead of sliding sideways, and furniture keeps its world position as workspaces come and go
+    this.ox = w / 2; this.oz = d / 2; this.group.position.set(this.ox, 0, this.oz);
+    for (const list of [this.spots.lounge, this.spots.meeting, this.spots.queue, this.spots.bed]) for (const sp of list) {
+      sp.x += this.ox; sp.z += this.oz;
+      if (sp.via) for (const v of (Array.isArray(sp.via) ? sp.via : [sp.via])) { v.x += this.ox; v.z += this.oz; }
+    }
+    this.spots.door.x += this.ox; this.spots.door.z += this.oz;
+    this.spots.counter.x += this.ox; this.spots.counter.z += this.oz;
+    this.corridorX += this.ox; this.loungeTopZ += this.oz;
+    // brand mark on the left wall, facing the desks
+    const lz = -d / 2 + Math.min(3.6, Math.max(3.0, d * 0.26));
+    const logo = voxLogo(0.038); logo.rotation.y = Math.PI / 2; logo.position.set(-w / 2 + 0.18, 1.15, lz); this.group.add(logo);
+    const logoWord = makeWallText('SCREENAGERS', { height: 0.3 });
+    logoWord.rotation.y = Math.PI / 2; logoWord.position.set(-w / 2 + 0.06, 0.82, lz); this.group.add(logoWord);
+    const logoLight = new THREE.PointLight(0x9ad46a, 1.1, 6, 2); logoLight.position.set(-w / 2 + 1.6, 2.2, lz); this.group.add(logoLight);
+
+    // landscape outside the platform: a loose ring of trees, bushes and a fallen log
+    const ground = new THREE.Group(); ground.position.y = -0.52; this.group.add(ground);
+    const ringPts = [];
+    for (let i = 0; i < 48; i++) {
+      const r = hash(`tree-${i}`);
+      const a = (i / 48) * Math.PI * 2 + ((r % 100) / 100) * 0.3;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      if (ca + sa > 0.25) continue;                    // the camera looks in along +x/+z, so keep that side clear
+      // walk out along the ray to where it leaves the platform rectangle, then stand well back from it
+      const edge = 1 / Math.max(Math.abs(ca) / (w / 2 + 0.6), Math.abs(sa) / (d / 2 + 0.6));
+      const pad = 3.0 + ((r >>> 8) % 1000) / 1000 * 10;          // 3..13 m beyond the edge
+      ringPts.push({ x: ca * (edge + pad), z: sa * (edge + pad), r, near: false });
+    }
+    ringPts.forEach(({ x, z, r, near }, i) => {
+      const kind = r % 10;
+      const o = kind < 6 ? voxTree(`tree-${i}`) : kind < 9 ? voxBush(`bush-${i}`) : voxLog(`log-${i}`);
+      const sc = 0.6 + ((r >>> 20) % 1000) / 1000 * 1.2;         // 0.6x .. 1.8x on top of the per-tree trunk height
+      o.scale.setScalar(sc); o.position.set(x, 0, z); o.rotation.y = ((r >>> 16) % 4) * Math.PI / 2;
+      ground.add(o);
+    });
+
+    this.buildOrnaments(w, d, z0, H, T);
+
+    // scattered papers + a couple of plants near the window for the cosy clutter
+    for (let i = 0; i < 5; i++) { const p = box(0.26, 0.01, 0.19, PAPER, { castShadow: false }); p.position.set(wx0 + 1 + i * 0.5 + (i % 2) * 0.2, 0.012, -d / 2 + 1.6 + (i % 3) * 0.3); p.rotation.y = i * 0.7; this.group.add(p); }
+  }
+  updateFrames(workspaces) {
+    workspaces.slice(0, this.frames.length).forEach((ws, i) => {
+      const times = ws.tabs.flatMap((t) => t.panes.flatMap((p) => (p.activity && p.activity.toolTimes) || [])).map((iso) => Date.parse(iso));
+      const bins = new Array(30).fill(0); const now = Date.now(); for (const t of times) { const m = Math.floor((now - t) / 60000); if (m >= 0 && m < 30) bins[29 - m]++; }
+      drawFrameChart(this.frames[i], ws.label, bins, STATE[ws.agent_status] ? STATE[ws.agent_status].css : '#8b93a7');
+    });
+  }
+  setKinds(kinds, active) {
+    if (!this.mascotGroup) return; const key = kinds.join(',');
+    if (key !== this.kindsKey) {
+      this.kindsKey = key; this.mascotGroup.clear(); this.mascots.clear();
+      const perRow = 5; const rows = Math.max(1, Math.ceil(kinds.length / perRow)); const STEP = 0.72; const rowW = Math.max(3, Math.min(kinds.length, perRow)) * STEP;
+      for (let r = 0; r < rows; r++) { const shelf = vox(0.08, (v) => v.box(-Math.round(rowW / 0.16), 0, -3, Math.round(rowW / 0.08) + 2, 1, 7, C.woodDark)); shelf.position.set(0, r * 0.7, 0); this.mascotGroup.add(shelf); }
+      kinds.forEach((k, i) => { const r = Math.floor(i / perRow); const col = i % perRow; const inRow = Math.min(perRow, kinds.length - r * perRow); const x = -(inRow - 1) * 0.36 + col * 0.72; /* centred on the board */ const m = makeMascot(k); m.row = r; m.group.position.set(x, r * 0.7 + 0.08, 0); this.mascotGroup.add(m.group); this.mascots.set(k, m); });
+    }
+    for (const [k, m] of this.mascots) m.active = active.has(k);
+  }
+  update(dt, t) {
+    for (const m of this.mascots.values()) { m.group.position.y = damp(m.group.position.y, m.row * 0.7 + 0.08 + (m.active ? Math.abs(Math.sin(t * 4 + m.phase)) * 0.1 : 0), 12, dt); m.body.material = m.active ? VOX_MAT : VOX_DIM; m.label.material.opacity = m.active ? 1 : 0.45; }
+    if (this.clock) { const n = new Date(); const sec = n.getSeconds() + n.getMilliseconds() / 1000, min = n.getMinutes() + sec / 60, hr = (n.getHours() % 12) + min / 60; this.secHand.rotation.z = -sec / 60 * Math.PI * 2; this.minHand.rotation.z = -min / 60 * Math.PI * 2; this.hourHand.rotation.z = -hr / 12 * Math.PI * 2; }
+    if (this.ledMat) this.ledMat.opacity = 0.75 + Math.sin(t * 1.4) * 0.15;
+  }
+  // ---- wall ornaments: bunting, clock, kanban, neon, LED strip, vine, coat stand, extinguisher
+  buildOrnaments(w, d, z0, H, T) {
+    const orn = new THREE.Group(); this.group.add(orn);
+    // bunting under the cornice on both walls: a sagging string with pennants
+    const bunting = (len) => vox(0.05, (v) => {
+      const n = Math.round(len / 0.05); const cols = [0xef4444, 0xf2c230, 0x3b82f6, 0x2fa36b, 0xf4f2ee, 0xec4899];
+      for (let x = 0; x <= n; x++) { const sag = Math.round(Math.sin((x / n) * Math.PI) * 4); v.set(x, -sag, 0, 0x3a3a42);
+        if (x % 7 === 3 && x < n - 2) { const c = cols[Math.floor(x / 7) % cols.length]; v.box(x - 1, -sag - 3, 0, 3, 2, 1, c); v.set(x, -sag - 4, 0, c); } }
+    });
+    const bb = bunting(w - 0.6); bb.position.set(-w / 2 + 0.3, H - 0.3, -d / 2 + 0.06); orn.add(bb);
+    const bl = bunting(d - 0.6); bl.rotation.y = Math.PI / 2; bl.position.set(-w / 2 + 0.06, H - 0.3, d / 2 - 0.3); orn.add(bl);
+    // LED strip along the cornice; its colour follows the office mood (see updateOrnaments)
+    this.ledMat = new THREE.MeshBasicMaterial({ color: 0xfff1c4, transparent: true, opacity: 0.85 });
+    const ledB = new THREE.Mesh(new THREE.BoxGeometry(w + T * 2, 0.045, 0.05), this.ledMat); ledB.position.set(0, H - 0.1, -d / 2 + 0.03); orn.add(ledB);
+    const ledL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.045, d + T), this.ledMat); ledL.position.set(-w / 2 + 0.03, H - 0.1, 0); orn.add(ledL);
+    // wall clock on the left wall, real time
+    const clock = new THREE.Group(); this.clock = clock;
+    const face = vox(0.05, (v) => { v.cyl(0, 0, 0, 6, 1, 0x2a2a2e); v.cyl(0, 1, 0, 5, 1, 0xf4f2ee); for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; v.set(Math.round(Math.sin(a) * 4), 2, -Math.round(Math.cos(a) * 4), i % 3 === 0 ? 0x2a2a2e : 0x9a9a9a); } });
+    face.rotation.x = Math.PI / 2; clock.add(face);
+    const hand = (len, wid, col) => { const g = new THREE.BoxGeometry(wid, len, 0.02); g.translate(0, len / 2 - 0.02, 0); const m = new THREE.Mesh(g, stdMat(col)); m.position.z = 0.16; return m; };
+    this.hourHand = hand(0.14, 0.035, 0x2a2a2e); this.minHand = hand(0.2, 0.025, 0x2a2a2e); this.secHand = hand(0.21, 0.012, 0xef4444); clock.add(this.hourHand, this.minHand, this.secHand);
+    const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.02, 8), stdMat(0xef4444)); pin.rotation.x = Math.PI / 2; pin.position.z = 0.17; clock.add(pin);
+    clock.rotation.y = Math.PI / 2; clock.position.set(-w / 2 + 0.05, 2.45, -d / 2 + 5.4); orn.add(clock);
+    // neon sign
+    const neon = voxText('SHIP IT', 0xff4fa3, 0.06); neon.rotation.y = Math.PI / 2; neon.position.set(-w / 2 + 0.06, 2.15, -d / 2 + 6.55); orn.add(neon);
+    const glow = new THREE.PointLight(0xff4fa3, 1.2, 4, 2); glow.position.set(-w / 2 + 0.9, 2.3, -d / 2 + 7.4); orn.add(glow);
+    // kanban board above the bed: sticky notes are the agents, filled in updateOrnaments
+    const board = new THREE.Group(); this.kanban = board; this.kanbanNotes = new THREE.Group(); board.add(this.kanbanNotes);
+    board.add(vox(0.05, (v) => { v.box(-19, -12, 0, 38, 24, 1, 0x2a2a2e); v.box(-18, -11, 1, 36, 22, 1, 0xf7f5f0); for (let i = 1; i < 4; i++) v.box(-18 + i * 9, -11, 2, 1, 22, 1, 0xd0ccc4); v.box(-18, 7, 2, 36, 1, 1, 0xd0ccc4); v.box(-6, -14, 0, 12, 2, 3, 0x2a2a2e); v.box(-4, -13, 3, 1, 1, 1, 0xef4444); v.box(-2, -13, 3, 1, 1, 1, 0x2563eb); v.box(0, -13, 3, 1, 1, 1, 0x16a34a); }));
+    const hdr = makeWallText('IDLE        DOING      NEEDS YOU      DONE', { height: 0.13, color: '#2a2a2e', bg: 'rgba(0,0,0,0)', border: false, font: '700 26px "IBM Plex Mono", monospace' }); hdr.position.set(0, 0.46, 0.17); board.add(hdr);
+    board.rotation.y = Math.PI / 2; board.position.set(-w / 2 + 0.06, 2.05, d / 2 - 1.6); orn.add(board);
+    // a vine trailing from the top right corner of the back wall
+    orn.add(voxVine('vine-a').translateX(w / 2 - 0.45).translateY(H - 0.2).translateZ(-d / 2 + 0.05));
+    // coat stand and fire extinguisher by the door
+    const door = { x: this.spots.door.x - this.ox, z: this.spots.door.z - this.oz };   // spots are in world space; this group is room-local
+    const stand = vox(0.08, (v) => { v.cyl(0, 0, 0, 2, 1, 0x2a2a2e); v.box(0, 1, 0, 1, 22, 1, 0x2a2a2e); for (const [dx, dz] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) { v.box(Math.min(0, dx), 21, Math.min(0, dz), Math.abs(dx) + 1, 1, Math.abs(dz) + 1, 0x2a2a2e); }
+      v.box(-3, 14, -1, 3, 7, 2, 0xef4444); v.box(1, 15, -1, 3, 6, 2, 0x2563eb); v.box(-1, 22, -1, 3, 2, 3, 0xf2c230); });
+    stand.position.set(door.x - 1.4, 0, door.z + 1.1); orn.add(stand);
+    const ext = vox(0.06, (v) => { v.cyl(0, 0, 0, 1, 7, 0xd92b2b); v.set(0, 7, 0, 0x2a2a2e); v.set(1, 6, 0, 0x2a2a2e); v.box(-1, 3, -2, 3, 2, 1, 0xf4f2ee); }); ext.position.set(door.x - 0.35, 0, door.z - 0.9); orn.add(ext);
+  }
+  updateOrnaments(state) {
+    const panes = state.workspaces.flatMap((w) => w.tabs.flatMap((t) => t.panes.filter((p) => p.agent)));
+    const n = (st) => panes.filter((p) => p.agent_status === st).length;
+    if (this.ledMat) this.ledMat.color.setHex(n('blocked') ? 0xfb923c : n('working') ? 0x4ade80 : 0xfff1c4);
+    if (!this.kanbanNotes) return;
+    this.kanbanNotes.clear();
+    const cols = [['idle', -0.675], ['working', -0.225], ['blocked', 0.225], ['done', 0.675]];
+    for (const [st, x] of cols) {
+      const list = panes.filter((p) => p.agent_status === st).slice(0, 6);
+      list.forEach((p, i) => { const note = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.14, 0.03), stdMat(STATE[st].hex)); note.position.set(x + ((hash(p.id) % 5) - 2) * 0.012, 0.3 - i * 0.17, 0.17); note.rotation.z = ((hash(p.id) % 7) - 3) * 0.02; this.kanbanNotes.add(note); });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------- scene
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(THEME.backdrop); scene.fog = new THREE.Fog(THEME.backdrop, 90, 220);
+const persp = new THREE.PerspectiveCamera(32, 1, 0.1, 300); persp.position.set(18, 16, 18);
+const ortho = new THREE.OrthographicCamera(-10, 10, 10, -10, -50, 200); ortho.position.set(30, 30, 30);
+let camera = persp; let isoMode = false;
+const controls = new OrbitControls(camera, canvas); controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 4; controls.maxDistance = 120; controls.minZoom = 0.3; controls.maxZoom = 6; controls.autoRotateSpeed = 0.5;
+const hemi = new THREE.HemisphereLight(0xfff4e6, 0xb07a4a, 0.85); scene.add(hemi); const amb = new THREE.AmbientLight(0xffffff, 0.22); scene.add(amb);
+const sun = new THREE.DirectionalLight(0xfff0d2, 2.6); sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096); sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.03; sun.shadow.radius = 3; scene.add(sun); scene.add(sun.target);
+const fill = new THREE.DirectionalLight(0xffe9d6, 0.7); fill.position.set(10, 12, 18); scene.add(fill);
+const groundMat = stdMat(THEME.backdrop); const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), groundMat); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.52; ground.receiveShadow = true; scene.add(ground);
+// a drafting grid on the ground: fine 1 m cells with a stronger line every 5 m, tinted from the backdrop
+const gridFine = new THREE.GridHelper(300, 300); const gridMajor = new THREE.GridHelper(300, 60);
+for (const [g, op, y] of [[gridFine, 0.22, -0.512], [gridMajor, 0.42, -0.510]]) { g.position.y = y; g.material.transparent = true; g.material.opacity = op; g.material.depthWrite = false; scene.add(g); }
+function tintGrid() { const c = new THREE.Color(THEME.backdrop).multiplyScalar(0.72); gridFine.material.color.copy(c); gridMajor.material.color.copy(c); }
+tintGrid();
+
+// post-processing: ambient occlusion for the cosy corner darkening
+let composer = null, aoMode = false;
+function buildComposer() {
+  composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
+  const gtao = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight); gtao.output = GTAOPass.OUTPUT.Default; gtao.blendIntensity = 0.6;
+  gtao.updateGtaoMaterial({ radius: 0.35, distanceExponent: 1, thickness: 0.6, scale: 0.8, samples: 16, distanceFallOff: 1, screenSpaceRadius: false }); gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, radiusExponent: 1, rings: 2, samples: 16 });
+  composer.addPass(gtao); composer.addPass(new OutputPass()); composer.gtao = gtao;
+}
+function resize() { const w = window.innerWidth, h = window.innerHeight; renderer.setSize(w, h, false); persp.aspect = w / h; persp.updateProjectionMatrix(); const a = w / h; const s = ortho.top; ortho.left = -s * a; ortho.right = s * a; ortho.updateProjectionMatrix(); if (composer) composer.setSize(w, h); }
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+window.addEventListener('resize', resize); resize(); buildComposer();
+function setCamera(iso) { isoMode = iso; camera = iso ? ortho : persp; controls.object = camera; buildComposer(); fitCamera(); }
+
+// ---------------------------------------------------------------------- agents: movement, seating, queues, meetings
+class Walker {
+  constructor(seed, kind) { this.seed = seed; this.kind = kind; this.char = new Character(seed, kind); this.group = this.char.group; scene.add(this.group); this.path = []; this.pos = new THREE.Vector3(); this.yaw = 0; this.spot = null; this.arrived = true; }
+  rebuildCharacter() {
+    const old = this.char, fresh = new Character(this.seed, this.kind);
+    fresh.pose = old.pose; fresh.behaviour = old.behaviour; fresh.seatH = old.seatH; fresh.dim = old.dim; fresh.t = old.t; fresh.chat = old.chat; fresh.chatT = old.chatT;
+    for (const c of [...old.bubble.children]) fresh.bubble.add(c);
+    fresh.group.position.copy(old.group.position); fresh.group.rotation.copy(old.group.rotation); fresh.group.scale.copy(old.group.scale);
+    scene.remove(old.group); scene.add(fresh.group); this.char = fresh; this.group = fresh.group;
+    if (this.id) this.group.traverse((o) => { if (o.isMesh) o.userData.paneId = this.id; });
+    old.model.userData.dispose && old.model.userData.dispose();
+  }
+  placeAt(x, z, yaw) { this.pos.set(x, 0, z); this.group.position.copy(this.pos); this.yaw = yaw; this.group.rotation.y = yaw; }
+  routeTo(spot, fromAisleZ) {
+    // Manhattan route: out to my aisle → right-hand corridor → destination aisle (or approach point) → spot
+    const pts = []; const p = this.pos; const cx = office.corridorX;
+    const vias = spot.via ? (Array.isArray(spot.via) ? spot.via : [spot.via]) : []; const first = vias[0] || null;
+    const destAisle = spot.aisleZ != null ? spot.aisleZ : (first ? first.z : spot.z);
+    const open = (z) => z >= office.lastAisleZ - 0.05; // the last aisle and everything in front of it is open floor
+    if (Math.abs(p.z - fromAisleZ) > 0.05) pts.push({ x: p.x, z: fromAisleZ });
+    if (open(fromAisleZ) && open(destAisle)) { const ax = first ? first.x : spot.x; pts.push({ x: ax, z: fromAisleZ }); if (!first && spot.aisleZ == null) pts.push({ x: ax, z: destAisle }); }
+    else if (Math.abs(p.x - cx) > 0.3 || Math.abs(fromAisleZ - destAisle) > 0.3) { pts.push({ x: cx, z: fromAisleZ }); pts.push({ x: cx, z: destAisle }); }
+    for (const v of vias) pts.push({ x: v.x, z: v.z });
+    if (!first && spot.aisleZ != null) pts.push({ x: spot.x, z: spot.aisleZ });
+    pts.push({ x: spot.x, z: spot.z });
+    this.path = pts.filter((q, i) => i === 0 ? Math.hypot(q.x - p.x, q.z - p.z) > 0.05 : Math.hypot(q.x - pts[i - 1].x, q.z - pts[i - 1].z) > 0.05);
+    this.spot = spot; this.arrived = this.path.length === 0;
+    if (this.arrived) this.snapToSpot(); else { this.char.pose = 'walk'; this.char.behaviour = 'walk'; }
+  }
+  snapToSpot() { const s = this.spot; if (!s) return; this.pos.set(s.x, 0, s.z); this.yaw = s.yaw; this.char.pose = s.lie ? 'lie' : s.sit ? 'sit' : 'stand'; this.char.seatH = s.seatH || 0.8; this.arrived = true; }
+  step(dt) {
+    if (!this.arrived && this.path.length) {
+      const tgt = this.path[0]; const dx = tgt.x - this.pos.x, dz = tgt.z - this.pos.z; const dist = Math.hypot(dx, dz); const stepLen = WALK_SPEED * walkDt;
+      if (dist <= stepLen) { this.pos.set(tgt.x, 0, tgt.z); this.path.shift(); if (!this.path.length) this.snapToSpot(); }
+      else { this.pos.x += (dx / dist) * stepLen; this.pos.z += (dz / dist) * stepLen; this.yaw = yawTo(dx, dz); }
+    }
+    this.group.position.x = this.pos.x; this.group.position.z = this.pos.z;
+    this.group.rotation.y = dampAngle(this.group.rotation.y, this.yaw, 10, dt);
+    this.char.update(dt);
+  }
+  dispose() { scene.remove(this.group); }
+}
+
+class Agent extends Walker {
+  constructor(paneId, seed, kind) { super(seed, kind); this.id = paneId; this.group.traverse((o) => { if (o.isMesh) o.userData.paneId = paneId; }); this.state = 'unknown'; this.pendingState = 'unknown'; this.dwell = 0; this.place = 'desk'; this.requested = 'desk'; this.retryT = 0; this.claimed = null; this.helpers = []; this.lastPromptAt = null; this.lastToolId = null; this.lastTitle = null; this.tool = null; this.toolSprite = null; this.stateSprite = null; this.first = true; }
+  deskSeat() { const s = this.desk.seatWorld(); return { id: 'desk', x: s.x, z: s.z, yaw: 0, sit: true, seatH: s.seatH, aisleZ: this.desk.aisleZ }; }
+  idleMinutes() { return this.idleFor != null ? this.idleFor : (this.idleAt != null ? (this.char.t - this.idleAt) / 60 : 0); }
+  desiredPlace() {
+    if (this.state === 'blocked') return 'queue';
+    if (this.state === 'done') return 'meeting';
+    if (this.state === 'idle') { if (this.longIdle) return 'bed'; return this.idleMinutes() < IDLE_TO_LOUNGE_MIN ? 'desk' : 'lounge'; }  // a breather at the desk first
+    return 'desk';
+  }
+  behaviourFor() {
+    if (!this.arrived) return 'walk';
+    if (this.place === 'desk') return this.state === 'working' ? 'type' : 'rest';
+    if (this.place === 'lounge') return 'sip';
+    if (this.place === 'queue') return world.queue[0] === this ? 'wave' : 'fidget';
+    if (this.place === 'meeting') return 'talk';
+    if (this.place === 'bed') return 'sleep';
+    return 'rest';
+  }
+  applyPane(p, desk) {
+    this.desk = desk; const st = p.agent ? (p.agent_status || 'unknown') : 'unknown';
+    if (st !== this.pendingState) { this.pendingState = st; this.dwell = 0; }
+    this.pane = p; this.char.dim = st === 'unknown' ? 0.35 : 1;
+    const tag = (p.name || p.title || p.agent || p.id).slice(0, 34);
+    if (!this.nameSprite || this.nameSprite.userData.text !== tag || this.nameSprite.userData.focused !== !!p.focused) {
+      if (this.nameSprite) { this.char.bubble.remove(this.nameSprite); this.nameSprite.material.map.dispose(); }
+      this.nameSprite = makeTextSprite(tag, { font: '600 26px "IBM Plex Mono", monospace', height: 0.26, pad: 12, bg: 'rgba(27,27,30,0.9)', border: p.focused ? 'rgba(251,191,36,.95)' : null });
+      this.nameSprite.userData.focused = !!p.focused; this.nameSprite.userData.order = 0;
+      this.char.bubble.add(this.nameSprite);
+    }
+    const name = esc(p.title || p.cwdName);
+    const act = p.activity;
+    this.longIdle = !!(act && act.lastTs && Date.now() - Date.parse(act.lastTs) > LONG_IDLE_MIN * 60000);
+    this.idleFor = act && act.lastTs ? (Date.now() - Date.parse(act.lastTs)) / 60000 : null;   // minutes since the transcript last moved
+    if (act && act.lastUserPrompt && act.lastUserPrompt.at !== this.lastPromptAt) { const first = this.lastPromptAt === null; this.lastPromptAt = act.lastUserPrompt.at; if (!first) { this.char.say(`“${act.lastUserPrompt.text}”`, 7); feed(`<b>${name}</b> got a new prompt`); } }
+    if (act && act.lastTool && act.lastTool.id !== this.lastToolId) {
+      const first = this.lastToolId === null; this.lastToolId = act.lastTool.id;
+      if (!first && st === 'working') {
+        const tl = act.lastTool; this.char.say(`${TOOL_GLYPH[tl.category] || ''} ${TOOL_LABEL[tl.category] || tl.name} ${tl.detail}`.trim(), 4);
+        if (tl.category === 'write') this.desk.addPaper(); if (tl.category === 'run') this.desk.screen.flash();
+        feed(`<b>${name}</b> ${TOOL_LABEL[tl.category] || tl.name} ${esc(tl.detail)}`);
+      }
+    }
+    if (p.title && p.title !== this.lastTitle) { if (this.lastTitle !== null) this.char.say(p.title, 5); this.lastTitle = p.title; }
+    const tool = act && act.lastTool && st === 'working' ? act.lastTool.category : null;
+    if (tool !== this.tool) { this.tool = tool; if (this.toolSprite) { this.char.bubble.remove(this.toolSprite); this.toolSprite = null; } if (tool) { this.toolSprite = makeGlyphSprite(TOOL_GLYPH[tool] || '🔧'); this.toolSprite.userData.order = 1; this.toolSprite.userData.hideWithChat = true; this.char.bubble.add(this.toolSprite); } }
+    // sub-agents → helpers come in through the door and huddle at the desk
+    const n = clamp(act && st === 'working' ? act.pendingAgents || 0 : 0, 0, 3);
+    while (this.helpers.length < n) {
+      const k = this.helpers.length; const h = new Walker(`${this.id}-helper-${k}`, p.agent); h.group.scale.setScalar(0.8);
+      h.char.dim = 0.85; h.group.traverse((o) => { if (o.isMesh) o.userData.paneId = this.id; });
+      const d = office.spots.door; h.placeAt(d.x, d.z, d.yaw); const s = this.desk.seatWorld();
+      h.routeTo({ id: `huddle-${k}`, x: s.x - 1.15 - (k % 2) * 0.45, z: s.z - 0.35 + k * 0.5, yaw: -Math.PI / 2, sit: false, aisleZ: this.desk.aisleZ }, d.z);
+      this.helpers.push(h); feed(`<b>${name}</b> called in a sub-agent`);
+    }
+    while (this.helpers.length > n) { const h = this.helpers.pop(); world.leaving.push(h); const d = office.spots.door; h.routeTo({ id: 'door', x: d.x, z: d.z, yaw: Math.PI / 2, sit: false, aisleZ: d.z }, this.desk.aisleZ); }
+    if (this.first) { this.first = false; this.state = st; this.pendingState = st; const s = this.deskSeat(); this.placeAt(s.x, s.z, 0); this.spot = s; this.snapToSpot(); }
+  }
+  tick(dt) {
+    this.dwell += dt;
+    if (this.pendingState !== this.state && this.dwell >= STATE_DWELL) { const prev = this.state; this.state = this.pendingState; if (this.state === 'idle') this.idleAt = this.char.t; if (this.state === 'idle' || this.state === 'done') this.desk.clearPapers(); if (this.state === 'done') this.char.celebrate(); feed(`<b>${esc(this.pane.title || this.pane.cwdName)}</b> ${prev} → ${this.state}`); }
+    const want = this.desiredPlace();
+    if (want !== this.requested) world.move(this, want);
+    else if (this.place !== this.requested && this.arrived) { this.retryT += dt; if (this.retryT > 15) { this.retryT = 0; if (office.spots[want] && world.free(want, this)) world.move(this, want); } } // wanted spot was full: move only once it frees up
+    const g = this.state === 'blocked' ? '?' : this.state === 'done' ? '✓' : (this.place === 'bed' && this.arrived ? '💤' : null);
+    if ((this.stateSprite ? this.stateSprite.userData.g : null) !== g) { if (this.stateSprite) { this.char.bubble.remove(this.stateSprite); this.stateSprite = null; } if (g) { this.stateSprite = makeGlyphSprite(g, { bg: g === '?' ? '#fb923c' : g === '✓' ? '#22c55e' : '#e0e7ff', border: g === '?' ? '#7c2d12' : g === '✓' ? '#14532d' : '#3730a3', color: g === '💤' ? '#312e81' : '#fff', size: 0.75 }); this.stateSprite.userData.g = g; this.stateSprite.userData.order = 1; this.stateSprite.userData.hideWithChat = true; this.char.bubble.add(this.stateSprite); } }
+    this.char.behaviour = this.arrived ? this.behaviourFor() : 'walk';
+    this.desk.tapKeys(dt, this.char.behaviour === 'type' ? this.char.tapBeat : null, this.char.tapBurst, this.char.tapReach);
+    // queue: shuffle forward as the line moves
+    if (this.place === 'queue' && this.arrived) { const idx = world.queue.indexOf(this); const slot = office.spots.queue[Math.min(Math.max(idx, 0), office.spots.queue.length - 1)]; if (slot && (Math.abs(slot.z - this.pos.z) > 0.05 || Math.abs(slot.x - this.pos.x) > 0.05)) { this.spot = slot; this.path = [{ x: slot.x, z: slot.z }]; this.arrived = false; this.char.pose = 'walk'; } }
+    this.step(dt);
+    for (const h of this.helpers) { h.step(dt); if (h.arrived) h.char.behaviour = 'talk'; }
+  }
+  dispose() { if (this.nameSprite) this.nameSprite.material.map.dispose(); super.dispose(); for (const h of this.helpers) h.dispose(); world.release(this); }
+}
+
+const world = {
+  queue: [], claims: new Map(), leaving: [],
+  free(kind, agent) { const list = office.spots[kind]; return list.find((s) => !this.claims.has(s.id) || this.claims.get(s.id) === agent); },
+  release(agent) { for (const [id, a] of this.claims) if (a === agent) this.claims.delete(id); const qi = this.queue.indexOf(agent); if (qi >= 0) this.queue.splice(qi, 1); agent.claimed = null; },
+  move(agent, place) {
+    const fromAisle = agent.place === 'desk' ? agent.desk.aisleZ : (agent.place === 'queue' ? agent.pos.z : office.loungeTopZ);
+    agent.requested = place; agent.retryT = 0;
+    this.release(agent);
+    let spot = null;
+    if (place === 'queue') { this.queue.push(agent); spot = office.spots.queue[Math.min(this.queue.length - 1, office.spots.queue.length - 1)]; }
+    else if (place === 'lounge' || place === 'meeting' || place === 'bed') { spot = this.free(place, agent); if (!spot && place === 'bed') { place = 'lounge'; spot = this.free('lounge', agent); } if (spot) this.claims.set(spot.id, agent); }
+    if (!spot) { place = 'desk'; spot = agent.deskSeat(); }
+    agent.place = place; agent.claimed = spot.id;
+    agent.routeTo(spot, fromAisle);
+  },
+  tickLeaving(dt) { for (const h of [...this.leaving]) { h.step(dt); if (h.arrived) { h.dispose(); this.leaving.splice(this.leaving.indexOf(h), 1); } } },
+};
+
+// ---- keep every character on a valid spot after the office is rebuilt or the agent set changes
+function reseatAll() {
+  const EPS = 0.25; // only get up if the seat actually moved
+  for (const ag of agents.values()) {
+    if (ag.first || ag.place === 'queue') continue; // the queue re-follows its own slot each tick
+    let spot = ag.place === 'desk' ? ag.deskSeat() : (office.spots[ag.place] || []).find((s) => s.id === ag.claimed);
+    if (!spot) { world.move(ag, ag.desiredPlace()); continue; } // that seat no longer exists
+    ag.spot = spot;
+    if (Math.hypot(spot.x - ag.pos.x, spot.z - ag.pos.z) <= EPS) { if (ag.arrived) ag.snapToSpot(); continue; }
+    ag.routeTo(spot, ag.place === 'desk' ? ag.desk.aisleZ : office.loungeTopZ);
+  }
+  for (const ag of agents.values()) { // sub-agent helpers only shuffle if their desk moved
+    const s = ag.desk.seatWorld();
+    ag.helpers.forEach((h, k) => {
+      const spot = { id: `huddle-${k}`, x: s.x - 1.15 - (k % 2) * 0.45, z: s.z - 0.35 + k * 0.5, yaw: -Math.PI / 2, sit: false, aisleZ: ag.desk.aisleZ };
+      if (Math.hypot(spot.x - h.pos.x, spot.z - h.pos.z) > EPS) h.routeTo(spot, h.pos.z);
+    });
+  }
+}
+
+// ------------------------------------------------------------------ world state
+const office = new Office(); scene.add(office.group);
+const banks = new Map(); const desks = new Map(); const agents = new Map();
+let layoutKey = ''; let bounds = { cx: 0, cz: 0, w: 12, d: 12 }; let didFit = false; let latest = null; let easelPane = null; let lastOfficeVersion = -1; let lastPaneKey = null;
+
+function applyState(state) {
+  latest = state;
+  const seenBanks = new Set(), seenDesks = new Set(), seenAgents = new Set();
+  const items = state.workspaces.map((ws, idx) => {
+    const panes = ws.tabs.flatMap((t) => t.panes.map((p) => ({ ...p, tabLabel: t.label, tabId: t.id })));
+    const n = Math.max(1, panes.length); const cols = Math.min(BANK_COLS, n); const rows = Math.ceil(n / cols);
+    return { ws, idx, panes, cols, w: cols * DESK_W + BANK_PAD * 2, d: rows * BANK_D + BANK_PAD * 2 };
+  });
+  const rowsOfBanks = [[]]; let rowW = 0;
+  for (const it of items) { const cur = rowsOfBanks[rowsOfBanks.length - 1]; if (cur.length && rowW + BANK_GAP + it.w > MAX_ROW_W) { rowsOfBanks.push([it]); rowW = it.w; } else { cur.push(it); rowW += (cur.length > 1 ? BANK_GAP : 0) + it.w; } }
+  const rowMeta = rowsOfBanks.map((row) => ({ row, w: row.reduce((a, it) => a + it.w, 0) + BANK_GAP * (row.length - 1), d: Math.max(0, ...row.map((it) => it.d)) }));
+  const banksW = Math.max(0, ...rowMeta.map((r) => r.w)); const banksD = rowMeta.reduce((a, r) => a + r.d, 0) + BANK_GAP * Math.max(0, rowMeta.length - 1);
+  // snap the room to a 4m grid so adding or closing one pane usually does not resize it at all,
+  // which keeps every piece of furniture (and everyone sitting on it) exactly where it was
+  const GRID = 4;
+  const W = Math.ceil((Math.max(LOUNGE_MIN_W, banksW + CORRIDOR_W) + WALL_PAD * 2) / GRID) * GRID;
+  const D = Math.ceil((banksD + LOUNGE_D + WALL_PAD * 2) / GRID) * GRID;
+  office.build(W, D, LOUNGE_D);
+  let z = -D / 2 + WALL_PAD;
+  for (const r of rowMeta) {
+    let x = -W / 2 + WALL_PAD; const aisleZ = z + r.d + BANK_GAP * 0.5; office.lastAisleZ = aisleZ + office.oz;
+    for (const it of r.row) {
+      const { ws, idx, panes, cols, w, d } = it; const bx = x + w / 2, bz = z + d / 2;
+      let bank = banks.get(ws.id); if (!bank) { bank = new Bank(ws.id, idx); banks.set(ws.id, bank); scene.add(bank.group); }
+      bank.build(w, d, ws.label, ws.agent_status); seenBanks.add(ws.id); bank.targetPos.set(bx + office.ox, 0.01, bz + office.oz); bank.setActivity(panes.reduce((a, p) => a + ((p.activity && p.activity.toolCountInWindow) || 0), 0));
+      const deskRows = Math.ceil(panes.length / cols);
+      panes.forEach((p, i) => {
+        const col = i % cols, row = Math.floor(i / cols);
+        let desk = desks.get(p.id); if (!desk) { desk = new Desk(p.id); desks.set(p.id, desk); scene.add(desk.group); }
+        desk.targetPos.set(bx - w / 2 + BANK_PAD + DESK_W * (col + 0.5) + office.ox, 0.03, bz - d / 2 + BANK_PAD + BANK_D * (row + 0.5) - 0.3 + office.oz);
+        desk.aisleZ = row === deskRows - 1 ? aisleZ + office.oz : desk.targetPos.z + BANK_D * 0.5 + 0.2;
+        desk.setPane(p); seenDesks.add(p.id);
+        if (p.agent) { let ag = agents.get(p.id); if (!ag) { ag = new Agent(p.id, p.sessionId || p.id, p.agent); agents.set(p.id, ag); } ag.applyPane(p, desk); seenAgents.add(p.id); }
+      });
+      x += w + BANK_GAP;
+    }
+    z += r.d + BANK_GAP;
+  }
+  for (const [id, b] of banks) if (!seenBanks.has(id)) { scene.remove(b.group); banks.delete(id); }
+  let freed = false;
+  for (const [id, ag] of agents) if (!seenAgents.has(id)) { ag.dispose(); agents.delete(id); freed = true; }
+  if (freed) for (const ag of agents.values()) if (ag.place !== ag.requested && world.free(ag.requested, ag)) world.move(ag, ag.requested);
+  for (const [id, desk] of desks) if (!seenDesks.has(id)) { desk.dispose(); desks.delete(id); }
+  // the room resizes when workspaces or panes come and go, which moves every seat: send everyone to a fresh spot
+  const paneKey = [...seenDesks].sort().join(',');
+  if ((office.version !== lastOfficeVersion || paneKey !== lastPaneKey) && lastPaneKey !== null) reseatAll();
+  lastOfficeVersion = office.version; lastPaneKey = paneKey;
+  const active = new Set(state.workspaces.flatMap((w) => w.tabs.flatMap((t) => t.panes.map((p) => p.agent).filter(Boolean))));
+  office.setKinds([...active].sort(), active); // only kinds with an agent running right now earn a plush on the shelf
+  office.updateFrames(state.workspaces);
+  office.updateOrnaments(state);
+  easelPane = (state.focused && state.focused.pane) || null;
+  bounds = { cx: office.ox, cz: office.oz, w: W, d: D };
+  const key = `${W.toFixed(1)}:${D.toFixed(1)}`;
+  if (key !== layoutKey) { layoutKey = key; const sw = W / 2 + 3, sd = D / 2 + 3; sun.shadow.camera.left = -sw; sun.shadow.camera.right = sw; sun.shadow.camera.top = sd; sun.shadow.camera.bottom = -sd; sun.shadow.camera.near = 1; sun.shadow.camera.far = 80; sun.target.position.set(office.ox, 0, office.oz); sun.position.copy(sun.target.position).addScaledVector(office.sunDir, -42); sun.shadow.camera.updateProjectionMatrix(); if (!didFit) { fitCamera(); didFit = true; } }
+  renderHud(state);
+}
+
+function fitCamera() {
+  const panelW = $('panel').classList.contains('hidden') || window.innerWidth < 760 ? 0 : 340;
+  const aspect = (window.innerWidth - panelW) / window.innerHeight;
+  const dir = new THREE.Vector3(0.62, 0.62, 0.62).normalize(); const right = new THREE.Vector3(0.7071, 0, -0.7071);
+  // projected size of the room box in an isometric view: width spans (W+D)/√2, height spans (W+D)·sin35° /√2 + wall height·cos35°
+  const pw = (bounds.w + bounds.d) * 0.7071 + 1.5, ph = (bounds.w + bounds.d) * 0.408 + 3.4 * 0.82 + 1.5;
+  const halfH = Math.max(ph / 2, pw / 2 / aspect) * 1.04; const dist = halfH * 2 / Math.tan(THREE.MathUtils.degToRad(persp.fov) / 2) * 0.55;
+  controls.target.set(bounds.cx, 0.6, bounds.cz + 0.4);
+  if (isoMode) { ortho.zoom = 1; ortho.top = halfH; ortho.bottom = -halfH; ortho.right = halfH * (window.innerWidth / window.innerHeight); ortho.left = -ortho.right; ortho.updateProjectionMatrix(); }
+  const shiftWorld = panelW ? (panelW / window.innerWidth) * (isoMode ? ortho.right : dist * 0.55) : 0; controls.target.addScaledVector(right, shiftWorld);
+  camera.position.copy(controls.target).addScaledVector(dir, isoMode ? 60 : dist);
+  controls.update();
+}
+
+// ------------------------------------------------------------------------ HUD
+const $ = (id) => document.getElementById(id);
+function feed(html) { const f = $('feed'); const el = document.createElement('div'); el.className = 'ev'; el.innerHTML = `<span style="opacity:.6">${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span> ${html}`; f.prepend(el); while (f.children.length > 7) f.lastChild.remove(); setTimeout(() => { el.style.transition = 'opacity 1s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 1000); }, 20000); }
+function renderHud(state) {
+  if (menuOpen) return; // the panel is rebuilt wholesale; leave it alone while a menu is anchored to a row
+  $('conn').className = 'dot ' + (state.herdr.running ? 'on' : 'off');
+  $('ver').textContent = state.herdr.running ? `herdr ${state.herdr.version}` : (state.herdr.error ? 'herdr not reachable' : '');
+  const panes = state.workspaces.flatMap((w) => w.tabs.flatMap((t) => t.panes));
+  const count = (s) => panes.filter((p) => p.agent && p.agent_status === s).length;
+  const nb = count('blocked');
+  $('nWorking').textContent = count('working'); $('nBlocked').textContent = nb; $('nIdle').textContent = count('idle') + count('done'); $('nPanes').textContent = panes.length;
+  $('blockedN').textContent = nb; $('bBlocked').classList.toggle('none', nb === 0);
+  const panel = $('panel'); let html = '';
+  for (const ws of state.workspaces) {
+    html += `<div class="ws"><h3><span class="st ${ws.agent_status}"></span><span class="n">${esc(ws.label)}</span> · ${ws.tabs.length} tabs<button class="rn" data-wsmenu="${ws.id}" title="Workspace actions">⋯</button></h3>`;
+    for (const t of ws.tabs) for (const p of t.panes) {
+      const act = p.activity; const tool = act && act.lastTool; const st = p.agent ? p.agent_status : 'unknown';
+      const ag = agents.get(p.id); const where = ag ? (ag.arrived ? { desk: ag.state === 'idle' ? 'resting at desk' : 'at desk', lounge: 'in the lounge', queue: `in the help queue (#${world.queue.indexOf(ag) + 1})`, meeting: 'at the meeting table', bed: 'napping (long idle)' }[ag.place] : 'walking…') : '';
+      const sub = p.agent ? (tool ? `${TOOL_GLYPH[tool.category] || ''} ${TOOL_LABEL[tool.category] || tool.name} ${esc(tool.detail)}` : `${esc(p.cwdName)}`) : `shell · ${esc(p.cwdName)}`;
+      const head = p.name ? `${esc(p.name)} <span class="s" style="font-weight:400">· ${esc(p.title || '')}</span>` : esc(p.title || t.label || p.cwdName);
+      html += `<div class="row ${p.focused ? 'focused' : ''} ${p.id === followId ? 'following' : ''}" data-pane="${p.id}"><span class="st ${st}"></span><div><div class="t">${head}</div><div class="s">${sub}</div>${where ? `<div class="s">${where}</div>` : ''}</div><div class="k"><b>${p.agent ? st : 'shell'}</b>${tool && tool.at ? ago(tool.at) : ''}<button class="rn" data-menu="${p.id}" title="Actions">⋯</button></div></div>`;
+    }
+    html += '</div>';
+  }
+  if (!state.workspaces.length) html = state.herdr.running
+    ? `<div style="padding:14px;color:var(--muted);line-height:1.6">Herdr is running with no workspaces open.<br><br>Use <b style="color:var(--text)">+ Workspace</b> below to open a folder, then <b style="color:var(--text)">+ Agent</b> to put someone to work in it.</div>`
+    : `<div style="padding:14px;color:var(--muted)">Cannot reach Herdr.<br><br>${esc(state.herdr.error || 'Is the herdr server running?')}</div>`;
+  panel.innerHTML = html;
+}
+$('panel').addEventListener('click', (e) => {
+  const am = e.target.closest('[data-menu]'); if (am) { e.stopPropagation(); openAgentMenu(am, am.dataset.menu); return; }
+  const wm = e.target.closest('[data-wsmenu]'); if (wm) { e.stopPropagation(); openWorkspaceMenu(wm, wm.dataset.wsmenu); return; } const row = e.target.closest('.row'); if (!row) return; focusPane(row.dataset.pane); if (agents.has(row.dataset.pane)) follow(row.dataset.pane); else { stopFollow(); flyTo(row.dataset.pane); } });
+$('panel').addEventListener('dblclick', (e) => { const row = e.target.closest('.row'); if (row) openTerminal(row.dataset.pane); });
+$('bRotate').onclick = () => { controls.autoRotate = !controls.autoRotate; $('bRotate').classList.toggle('active', controls.autoRotate); };
+$('bFit').onclick = () => { stopFollow(); fitCamera(); };
+$('follow').onclick = stopFollow;
+$('bPanel').onclick = () => { $('panel').classList.toggle('hidden'); $('bPanel').classList.toggle('active'); };
+$('termClose').onclick = () => $('term').classList.remove('open');
+window.addEventListener('keydown', (e) => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target || {}).tagName || '');
+  if (e.key === 'Escape') { $('term').classList.remove('open'); closeDialog(); closeMenu(); $('legend').classList.remove('open'); stopFollow(); }
+  if (typing) return;
+  if (e.key === 'f') { stopFollow(); fitCamera(); }
+  if (e.key === 'b') jumpBlocked();
+});
+
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => (t.style.display = 'none'), 1800); }
+async function focusPane(paneId) { if (DEMO) return toast(`demo: would focus ${paneId}`); try { const r = await fetch(`/api/focus?pane=${encodeURIComponent(paneId)}`, { method: 'POST' }); if (!r.ok) throw new Error((await r.json()).error); toast(`focused ${paneId} in Herdr`); } catch (err) { toast(`focus failed: ${err.message}`); } }
+function openDialog(title, ctx, bodyHtml, { save = 'Save', extra = null, onSave, onOpen } = {}) {
+  $('rnTitle').textContent = title; $('rnCtx').textContent = ctx; $('rnBody').innerHTML = bodyHtml;
+  $('rnSave').textContent = save; $('rnSave').disabled = false; $('rnSave').style.display = onSave ? '' : 'none'; $('rnSave').classList.remove('danger');
+  const ex = $('rnClear'); if (extra) { ex.textContent = extra.label; ex.style.display = ''; ex.onclick = extra.onClick; } else ex.style.display = 'none';
+  dialogSave = onSave || null; $('rename').classList.add('open'); if (onOpen) onOpen();
+}
+function closeDialog() { $('rename').classList.remove('open'); dialogSave = null; renameTarget = null; }
+function dialogError(msg) { const h = $('rnHint'); h.classList.add('err'); h.textContent = msg; $('rnSave').disabled = false; }
+function dialogHint(msg, err = false) { const h = $('rnHint'); h.classList.toggle('err', err); h.textContent = msg; }
+let dialogSave = null;
+async function post(url) { if (DEMO) { await new Promise((r) => setTimeout(r, 250)); return { ok: true, demo: true, name: 'demo' }; } const r = await fetch(url, { method: 'POST' }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`); return j; }
+function agentPanes() { return latest ? latest.workspaces.flatMap((w) => w.tabs.flatMap((t) => t.panes.filter((p) => p.agent).map((p) => ({ ...p, ws: w.label })))) : []; }
+
+// ---- + Agent
+function openNewAgent(intoPane) {
+  if (!latest) return toast('no session yet');
+  const kinds = (latest.startableKinds && latest.startableKinds.length ? latest.startableKinds : latest.allKinds) || ['claude'];
+  const ws = latest.workspaces;
+  if (!intoPane && !ws.length) return toast('create a workspace first');
+  const shell = intoPane ? findPane(intoPane) : null;
+  openDialog(shell ? 'Start an agent here' : 'New agent',
+    shell ? `${intoPane} · ${esc(shell.cwd)}` : 'starts a coding agent in a fresh Herdr pane', `
+    <div class="row2 field">
+      <div><label for="naKind">Agent</label><select id="naKind">${kinds.map((k) => `<option${k === 'claude' ? ' selected' : ''}>${esc(k)}</option>`).join('')}</select></div>
+      ${shell ? '' : `<div><label for="naWs">Workspace</label><select id="naWs">${ws.map((w) => `<option value="${w.id}"${w.focused ? ' selected' : ''}>${esc(w.label)}</option>`).join('')}</select></div>`}
+    </div>
+    <div class="field"><label for="naName">Name (optional)</label><input id="naName" type="text" maxlength="32" placeholder="auto, e.g. claude-2" autocomplete="off" spellcheck="false"></div>
+    ${shell ? '' : `<label>Placement</label>
+    <div class="seg"><button type="button" class="on" data-place="tab">New tab</button><button type="button" data-place="split">Split a pane</button></div>`}`,
+  { save: 'Start agent', onSave: async () => {
+      const kind = $('naKind').value, name = $('naName').value.trim();
+      dialogHint(`starting ${kind}… this can take up to 30s`); $('rnSave').disabled = true;
+      const q = shell
+        ? `pane=${encodeURIComponent(intoPane)}&kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`
+        : `workspace=${encodeURIComponent($('naWs').value)}&kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}&placement=${document.querySelector('#rnBody .seg button.on').dataset.place}`;
+      const j = await post(`/api/agent/new?${q}`);
+      closeDialog(); toast(j.warning ? `${j.name}: ${j.warning}` : `started ${j.name} in ${j.pane}`); feed(`<b>${esc(j.name)}</b> joined the office`);
+    } });
+  $('rnBody').querySelectorAll('.seg button').forEach((b) => (b.onclick = () => { $('rnBody').querySelectorAll('.seg button').forEach((x) => x.classList.remove('on')); b.classList.add('on'); }));
+  const n = (latest.startableKinds || []).length, tot = (latest.allKinds || []).length;
+  const installed = n ? `${n} of ${tot} agent CLIs are installed here` : 'no agent CLI detected, showing all kinds';
+  dialogHint(`${installed} · ${shell ? 'starts in this existing shell, which must be at its prompt' : 'a new pane is created, then the agent starts in it'}`);
+}
+
+// ---- + Workspace
+function openNewWorkspace() {
+  const seen = [...new Set((latest ? latest.workspaces.flatMap((w) => w.tabs.flatMap((t) => t.panes.map((p) => p.cwd))) : []))];
+  openDialog('New workspace', 'a Herdr workspace rooted at a folder', `
+    <div class="field"><label for="nwCwd">Folder</label><input id="nwCwd" type="text" list="nwList" placeholder="~/Development/my-project" autocomplete="off" spellcheck="false"><datalist id="nwList">${seen.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></div>
+    <div class="field"><label for="nwLabel">Label (optional)</label><input id="nwLabel" type="text" maxlength="40" placeholder="defaults to the folder name" autocomplete="off"></div>`,
+  { save: 'Create', onSave: async () => {
+      const cwd = $('nwCwd').value.trim(); if (!cwd) return dialogError('pick a folder');
+      $('rnSave').disabled = true; dialogHint('creating…');
+      await post(`/api/workspace/new?cwd=${encodeURIComponent(cwd)}&label=${encodeURIComponent($('nwLabel').value.trim())}`);
+      closeDialog(); toast('workspace created'); feed('a new <b>workspace</b> opened');
+    } });
+  const inp = $('nwCwd');
+  inp.addEventListener('input', async () => {
+    const v = inp.value; if (!v.endsWith('/')) return;
+    try { const r = await fetch(`/api/dirs?path=${encodeURIComponent(v)}`); const j = await r.json(); if (j.dirs) { $('nwList').innerHTML = j.dirs.map((d) => `<option value="${esc(d)}">`).join(''); dialogHint(`${j.dirs.length} folders in ${j.path}`); } } catch { /* ignore */ }
+  });
+  setTimeout(() => inp.focus(), 0);
+  dialogHint('type a path; end it with / to list subfolders');
+}
+
+// ---- Prompt
+function openPrompt(paneId) {
+  const list = agentPanes(); if (!list.length) return toast('no agents running');
+  const target = paneId || (latest.focused && latest.focused.pane) || list[0].id;
+  openDialog('Send a prompt', 'submits the text to the agent, as if you typed it', `
+    <div class="field"><label for="pmTo">To</label><select id="pmTo">${list.map((p) => `<option value="${p.id}"${p.id === target ? ' selected' : ''}>${esc(p.name || p.title || p.cwdName)} · ${esc(p.ws)} · ${p.agent_status}</option>`).join('')}</select></div>
+    <div class="field"><label for="pmText">Prompt</label><textarea id="pmText" placeholder="e.g. run the tests and fix what fails"></textarea></div>`,
+  { save: 'Send', onSave: async () => {
+      const to = $('pmTo').value, text = $('pmText').value.trim(); if (!text) return dialogError('type a prompt');
+      $('rnSave').disabled = true; dialogHint('sending…');
+      await post(`/api/prompt?pane=${encodeURIComponent(to)}&text=${encodeURIComponent(text)}`);
+      closeDialog(); toast('prompt sent'); const ag = agents.get(to); if (ag) ag.char.say(`“${text.slice(0, 40)}”`, 6);
+    } });
+  setTimeout(() => $('pmText').focus(), 0);
+  dialogHint('⌘/Ctrl + Enter to send');
+  $('pmText').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('rnSave').click(); });
+}
+
+// ---- Design
+function openDesign() {
+  openDialog('Customize', 'changes the floor, walls and backdrop', `
+    <div class="themes">${Object.entries(THEMES).map(([k, t]) => `<button type="button" data-theme="${k}" class="${k === themeKey ? 'on' : ''}"><span class="sw"><span style="background:${t.planks[0]}"></span><span style="background:#${t.wall.toString(16).padStart(6, '0')}"></span><span style="background:#${t.backdrop.toString(16).padStart(6, '0')}"></span></span>${esc(t.name)}</button>`).join('')}</div>`,
+  { save: 'Done', onSave: async () => closeDialog() });
+  $('rnBody').querySelectorAll('[data-theme]').forEach((b) => (b.onclick = () => {
+    $('rnBody').querySelectorAll('[data-theme]').forEach((x) => x.classList.remove('on')); b.classList.add('on');
+    applyTheme(b.dataset.theme); dialogHint(`${THEMES[b.dataset.theme].name} applied`);
+  }));
+  dialogHint('picked style is remembered on this browser');
+}
+function applyTheme(key) {
+  if (!THEMES[key]) return; themeKey = key; THEME = THEMES[key];
+  try { localStorage.setItem('herdr-office-theme', key); } catch { /* private mode */ }
+  WHITE.color.setHex(THEME.trim); scene.background = new THREE.Color(THEME.backdrop); scene.fog.color.setHex(THEME.backdrop); groundMat.color.setHex(THEME.backdrop); tintGrid();
+  office.size = { w: 0, d: 0 }; if (latest) applyState(latest);
+}
+
+// ---- hand off to the real Herdr TUI
+async function openInHerdr(paneId) {
+  if (DEMO) return toast('demo: would open Herdr');
+  toast('opening Herdr…');
+  try {
+    const j = await post(`/api/open-terminal${paneId ? `?pane=${encodeURIComponent(paneId)}` : ''}`);
+    toast(j.action === 'launched' ? 'started Herdr in a new Terminal window'
+        : j.action === 'raised' ? `brought ${(j.app || '').split('/').pop().replace('.app', '')} to the front`
+        : j.note || 'focused the pane in Herdr');
+  } catch (err) { toast(`could not open Herdr: ${err.message}`); }
+}
+
+// ---- dropdown menu
+let menuOpen = false, menuAnchor = null;
+function openMenu(anchor, header, items) {
+  const el = $('menu');
+  el.innerHTML = `<div class="mh">${header}</div>` + items.map((it, i) => it.sep ? '<div class="sep"></div>' : `<button data-i="${i}" class="${it.danger ? 'danger' : ''}"><span class="ic">${it.icon || ''}</span>${esc(it.label)}${it.key ? `<span class="k">${esc(it.key)}</span>` : ''}</button>`).join('');
+  el.querySelectorAll('button').forEach((b) => (b.onclick = () => { const it = items[+b.dataset.i]; closeMenu(); it.onClick(); }));
+  el.classList.add('open'); menuOpen = true;
+  if (menuAnchor) menuAnchor.classList.remove('on'); menuAnchor = anchor; anchor.classList.add('on');
+  const r = anchor.getBoundingClientRect(); const w = el.offsetWidth, h = el.offsetHeight;
+  el.style.left = `${Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8))}px`;
+  el.style.top = `${r.bottom + h + 8 > window.innerHeight ? Math.max(8, r.top - h - 4) : r.bottom + 4}px`;
+}
+function closeMenu() { $('menu').classList.remove('open'); menuOpen = false; if (menuAnchor) { menuAnchor.classList.remove('on'); menuAnchor = null; } }
+window.addEventListener('pointerdown', (e) => { if (menuOpen && !e.target.closest('#menu') && !e.target.closest('[data-menu],[data-wsmenu]')) closeMenu(); }, true);
+$('panel').addEventListener('scroll', () => menuOpen && closeMenu());
+
+function openAgentMenu(anchor, paneId) {
+  const p = findPane(paneId); if (!p) return;
+  const common = [
+    { icon: '❐', label: 'Open in Herdr terminal', onClick: () => openInHerdr(paneId) },
+    { icon: '◎', label: 'Focus in Herdr', onClick: () => { focusPane(paneId); flyTo(paneId); } },
+    { icon: '⌕', label: p.agent ? 'Follow in office' : 'Look at in office', onClick: () => (p.agent ? follow(paneId) : (stopFollow(), flyTo(paneId))) },
+    { icon: '▤', label: 'Read terminal', key: 'dbl-click', onClick: () => openTerminal(paneId) },
+    { sep: true },
+  ];
+  const items = p.agent
+    ? [...common,
+       { icon: '✉', label: 'Send prompt…', onClick: () => openPrompt(paneId) },
+       { icon: '✎', label: p.name ? 'Rename…' : 'Give it a name…', key: 'right-click', onClick: () => renamePane(paneId) },
+       { icon: '☺', label: 'Change avatar…', onClick: () => openAvatar(paneId) },
+       { sep: true },
+       { icon: '✕', label: 'Close agent…', danger: true, onClick: () => closeAgent(paneId) }]
+    : [...common,
+       { icon: '+', label: 'Start an agent here…', onClick: () => openNewAgent(paneId) },
+       { sep: true },
+       { icon: '✕', label: 'Close shell…', danger: true, onClick: () => closeAgent(paneId) }];
+  openMenu(anchor, `<b>${esc(p.name || p.title || p.cwdName)}</b><br>${paneId} · ${esc(p.agent || 'empty shell')}${p.agent ? ' ' + esc(p.agent_status) : ''}`, items);
+}
+function openWorkspaceMenu(anchor, wsId) {
+  const ws = latest && latest.workspaces.find((w) => w.id === wsId); if (!ws) return;
+  const panes = ws.tabs.flatMap((t) => t.panes); const running = panes.filter((p) => p.agent).length;
+  openMenu(anchor, `<b>${esc(ws.label)}</b><br>${wsId} · ${ws.tabs.length} tabs · ${running} agent${running === 1 ? '' : 's'}`, [
+    { icon: '❐', label: 'Open in Herdr terminal', onClick: () => openInHerdr(panes[0] && panes[0].id) },
+    { icon: '◎', label: 'Focus in Herdr', onClick: async () => { try { await post(`/api/focus?pane=${encodeURIComponent(panes[0] && panes[0].id)}`); toast(`focused ${ws.label}`); } catch (err) { toast(err.message); } } },
+    { icon: '+', label: 'New agent here…', onClick: () => { openNewAgent(); const sel = $('naWs'); if (sel) sel.value = wsId; } },
+    { sep: true },
+    { icon: '✕', label: 'Close workspace…', danger: true, onClick: () => closeWorkspace(wsId) },
+  ]);
+}
+
+// ---- figure thumbnails for the avatar picker, rendered once and cached
+let thumbRig = null; const thumbCache = new Map();
+function thumbFor(data) {
+  if (thumbCache.has(data.id)) return thumbCache.get(data.id);
+  if (!thumbRig) {
+    const canvas = document.createElement('canvas'); canvas.width = 112; canvas.height = 140;
+    const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true }); r.setClearColor(0x000000, 0); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping;
+    const sc = new THREE.Scene(); sc.add(new THREE.HemisphereLight(0xfff9e9, 0x596264, 2.2)); const key = new THREE.DirectionalLight(0xfff2d8, 4.5); key.position.set(-3, 6, 5); sc.add(key);
+    const cam = new THREE.PerspectiveCamera(28, 112 / 140, 0.1, 50); cam.position.set(1.6, 2.9, 6.4); cam.lookAt(0, 1.75, 0);
+    thumbRig = { r, sc, cam };
+  }
+  const { r, sc, cam } = thumbRig; const model = createVoxelCharacter(data); model.rotation.y = -0.35; sc.add(model);
+  r.render(sc, cam); const url = r.domElement.toDataURL('image/png');
+  sc.remove(model); model.userData.dispose && model.userData.dispose();
+  thumbCache.set(data.id, url); return url;
+}
+
+// ---- pick an avatar
+function openAvatar(paneId) {
+  const ag = agents.get(paneId); const p = findPane(paneId); if (!ag || !p) return toast('no agent in that pane');
+  const current = AVATARS[ag.seed] || null;
+  const card = (c, id, name, title, img) => `<button type="button" data-avatar="${id}" class="${c ? 'on' : ''}"><img class="thumb" alt="" src="${img}"><span class="nm"><b>${esc(name)}</b><small>${esc(title)}</small></span></button>`;
+  const autoFig = ROSTER_BY_ID[KIND_CAST[p.agent]] || ROSTER[hash(ag.seed) % ROSTER.length]; const autoName = autoFig.name;
+  openDialog('Change avatar', `${esc(p.name || p.title || p.cwdName)} · ${paneId}`,
+    `<div class="themes avatars">${card(!current, '', 'Auto', `cast by kind · ${autoName}`, thumbFor(autoFig))}${ROSTER.map((r) => card(current === r.id, r.id, r.name, r.title, thumbFor(r))).join('')}</div>`,
+    { save: 'Done', onSave: async () => closeDialog() });
+  $('rnBody').querySelectorAll('[data-avatar]').forEach((b) => (b.onclick = () => {
+    $('rnBody').querySelectorAll('[data-avatar]').forEach((x) => x.classList.remove('on')); b.classList.add('on');
+    setAvatar(ag.seed, b.dataset.avatar || null); ag.rebuildCharacter();
+    const who = b.dataset.avatar ? ROSTER_BY_ID[b.dataset.avatar].name : 'the default for its kind';
+    dialogHint(`now played by ${who}`); feed(`<b>${esc(p.name || p.title || p.cwdName)}</b> is now ${esc(who)}`);
+  }));
+  dialogHint('remembered for this agent in this browser');
+}
+
+// ---- close an agent
+function closeAgent(paneId) {
+  const p = findPane(paneId); if (!p) return toast('pane not gone yet');
+  const who = p.name || p.title || p.cwdName;
+  const busy = p.agent_status === 'working';
+  openDialog(p.agent ? 'Close agent' : 'Close shell', `${paneId} · ${esc(p.ws || '')}`,
+    p.agent
+      ? `<div class="warn">Closing <b>${esc(who)}</b> ends its ${esc(p.agent)} session and closes the Herdr pane.${busy ? '<ul><li>It is <b>working</b> right now. Unsaved work in that turn is lost.</li></ul>' : ''}<ul><li>The transcript on disk is kept.</li></ul></div>`
+      : `<div class="warn">Closes this empty shell pane in <b>${esc(p.cwdName)}</b>.<ul><li>Anything still running in that terminal is ended.</li></ul></div>`,
+    { save: p.agent ? 'Close agent' : 'Close shell', onSave: async () => {
+        $('rnSave').disabled = true; dialogHint('closing…');
+        await post(`/api/agent/close?pane=${encodeURIComponent(paneId)}&confirm=yes`);
+        closeDialog(); toast(`closed ${who}`); feed(`<b>${esc(who)}</b> left the office`);
+      } });
+  $('rnSave').classList.add('danger');
+  dialogHint(busy ? 'this agent is mid-task' : 'this cannot be undone');
+}
+
+// ---- close a workspace
+function closeWorkspace(wsId) {
+  const ws = latest && latest.workspaces.find((w) => w.id === wsId); if (!ws) return toast('workspace not found');
+  const panes = ws.tabs.flatMap((t) => t.panes); const running = panes.filter((p) => p.agent);
+  const needType = running.length > 0;
+  openDialog('Close workspace', `${wsId} · ${esc(ws.label)}`,
+    `<div class="warn">Closing <b>${esc(ws.label)}</b> closes ${ws.tabs.length} tab${ws.tabs.length === 1 ? '' : 's'} and ${panes.length} pane${panes.length === 1 ? '' : 's'} in Herdr.${running.length ? `<ul>${running.map((p) => `<li><b>${esc(p.name || p.title || p.cwdName)}</b> · ${p.agent} ${p.agent_status}</li>`).join('')}</ul>` : '<ul><li>No agents are running in it.</li></ul>'}</div>` +
+    (needType ? `<div class="field"><label for="wdName">Type <b>${esc(ws.label)}</b> to confirm</label><input id="wdName" type="text" autocomplete="off" spellcheck="false" placeholder="${esc(ws.label)}"></div>` : ''),
+    { save: 'Close workspace', onSave: async () => {
+        if (needType && $('wdName').value.trim() !== ws.label) return dialogError('type the workspace name to confirm');
+        $('rnSave').disabled = true; dialogHint('closing…');
+        await post(`/api/workspace/close?workspace=${encodeURIComponent(wsId)}&confirm=yes`);
+        closeDialog(); toast(`closed ${ws.label}`); feed(`workspace <b>${esc(ws.label)}</b> closed`);
+      } });
+  $('rnSave').classList.add('danger');
+  if (needType) { $('rnSave').disabled = true; const inp = $('wdName'); inp.addEventListener('input', () => { $('rnSave').disabled = inp.value.trim() !== ws.label; }); inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !$('rnSave').disabled) $('rnSave').click(); }); setTimeout(() => inp.focus(), 0); }
+  dialogHint(running.length ? `${running.length} running agent${running.length === 1 ? '' : 's'} will be ended` : 'this cannot be undone');
+}
+
+// ---- jump to the next blocked agent
+let blockedIdx = 0;
+function jumpBlocked() {
+  const list = [...agents.values()].filter((a) => a.state === 'blocked');
+  if (!list.length) return toast('nobody is blocked');
+  const ag = list[blockedIdx++ % list.length];
+  focusPane(ag.id); flyTo(ag.id); toast(`${ag.pane.name || ag.pane.title || ag.id} needs you`);
+}
+
+let renameTarget = null;
+const NAME_RE = /^[a-z][a-z0-9_-]{0,31}$/;
+function renamePane(paneId) {
+  const p = findPane(paneId); if (!p || !p.agent) return toast('only agent panes can be named');
+  renameTarget = paneId;
+  openDialog('Rename agent', `${paneId} · ${p.title || p.cwdName}`,
+    `<div class="field"><label for="rnInput">Name in Herdr</label><input id="rnInput" type="text" autocomplete="off" spellcheck="false" maxlength="32" placeholder="e.g. reviewer, cms-fixer" value="${esc(p.name || '')}"></div>`,
+    { save: 'Save', extra: p.name ? { label: 'Clear name', onClick: () => submitRename('') } : null, onSave: () => submitRename($('rnInput').value.trim()) });
+  $('rnInput').addEventListener('input', validateRename);
+  $('rnInput').addEventListener('keydown', (e) => { if (e.key === 'Enter' && validateRename() && $('rnInput').value.trim()) submitRename($('rnInput').value.trim()); });
+  validateRename(); setTimeout(() => { $('rnInput').focus(); $('rnInput').select(); }, 0);
+}
+function validateRename() {
+  const el = $('rnInput'); if (!el) return false;
+  const v = el.value.trim(); const hint = $('rnHint'); const ok = v === '' || NAME_RE.test(v);
+  hint.classList.toggle('err', !ok);
+  hint.textContent = v === '' ? 'lowercase letters, digits, - or _ · starts with a letter' : ok ? `will show as “${v}”` : (/^[^a-z]/.test(v) ? 'must start with a lowercase letter' : /[A-Z]/.test(v) ? 'lowercase only' : /\s/.test(v) ? 'no spaces: use - or _' : 'only letters, digits, - and _ (max 32)');
+  $('rnSave').disabled = !ok || v === ''; return ok;
+}
+
+async function submitRename(name) {
+  const paneId = renameTarget; if (!paneId) return; const p = findPane(paneId);
+  if (DEMO) { if (p) p.name = name || null; closeDialog(); renderHud(latest); toast(name ? `demo: named ${name}` : 'demo: name cleared'); return; }
+  $('rnSave').disabled = true;
+  try { await post(`/api/rename?pane=${encodeURIComponent(paneId)}&name=${encodeURIComponent(name)}`); closeDialog(); toast(name ? `named ${name} in Herdr` : 'name cleared'); }
+  catch (err) { dialogError(`rename failed: ${err.message}`); }
+}
+$('rnSave').onclick = async () => { if (!dialogSave) return; try { await dialogSave(); } catch (err) { dialogError(err.message); } };
+$('rnCancel').onclick = closeDialog;
+$('rename').addEventListener('pointerdown', (e) => { if (e.target === $('rename')) closeDialog(); });
+$('bNewAgent').onclick = openNewAgent;
+$('bNewWs').onclick = openNewWorkspace;
+$('bDesign').onclick = openDesign;
+$('bBlocked').onclick = jumpBlocked;
+$('bHelp').onclick = () => $('legend').classList.toggle('open');
+async function openTerminal(paneId) {
+  const p = findPane(paneId); $('termTitle').textContent = p ? (p.title || p.cwdName) : paneId; $('termSub').textContent = `${paneId} · ${p ? p.cwd : ''}`; $('termBody').textContent = 'loading…'; $('term').classList.add('open');
+  if (DEMO) { $('termBody').textContent = '(demo mode: no terminal to read)'; return; }
+  try { const r = await fetch(`/api/read?pane=${encodeURIComponent(paneId)}&lines=60`); $('termBody').textContent = (await r.text()).replace(/\n+$/, ''); $('termBody').scrollTop = 1e9; } catch (err) { $('termBody').textContent = `read failed: ${err.message}`; }
+}
+function findPane(id) { if (!latest) return null; for (const w of latest.workspaces) for (const t of w.tabs) for (const p of t.panes) if (p.id === id) return { ...p, tabLabel: t.label, ws: w.label }; return null; }
+let followId = null;
+function follow(paneId) {
+  const ag = agents.get(paneId); if (!ag) { flyTo(paneId); return; }
+  followId = paneId; flyTo(paneId);
+  const p = ag.pane; $('follow').querySelector('b').textContent = p.name || p.title || p.cwdName; $('follow').classList.add('on');
+  for (const r of document.querySelectorAll('.row')) r.classList.toggle('following', r.dataset.pane === paneId);
+}
+function stopFollow() { if (!followId) return; followId = null; $('follow').classList.remove('on'); for (const r of document.querySelectorAll('.row')) r.classList.remove('following'); }
+function trackFollow(dt) {
+  if (!followId) return; const ag = agents.get(followId); if (!ag) { stopFollow(); return; }
+  // slide target and camera together so the orbit offset the user has chosen is kept
+  const want = new THREE.Vector3(ag.pos.x, 0.9, ag.pos.z); const delta = want.sub(controls.target).multiplyScalar(1 - Math.exp(-4 * dt));
+  controls.target.add(delta); camera.position.add(delta);
+}
+function flyTo(paneId) { const ag = agents.get(paneId); const d = desks.get(paneId); const p = ag ? ag.pos : (d ? d.targetPos : null); if (!p) return; controls.target.set(p.x, 0.8, p.z + 0.3); const dir = new THREE.Vector3(0.55, 0.6, 0.6).normalize(); if (isoMode) { ortho.zoom = 3.2; ortho.updateProjectionMatrix(); ortho.position.copy(controls.target).addScaledVector(dir, 60); } else camera.position.copy(controls.target).addScaledVector(dir, 8); }
+
+// ------------------------------------------------------------------- picking
+const ray = new THREE.Raycaster(); const mouse = new THREE.Vector2(); let hoverId = null; let downAt = 0; let downPos = [0, 0];
+function pickAt(x, y) { mouse.set((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1); ray.setFromCamera(mouse, camera); const list = []; for (const d of desks.values()) list.push(...d.pickables); for (const a of agents.values()) a.group.traverse((o) => { if (o.isMesh) list.push(o); }); const hit = ray.intersectObjects(list, false)[0]; return hit ? hit.object.userData.paneId : null; }
+canvas.addEventListener('pointermove', (e) => { const id = pickAt(e.clientX, e.clientY); if (id !== hoverId) { hoverId = id; canvas.style.cursor = id ? 'pointer' : 'default'; } });
+canvas.addEventListener('pointerdown', (e) => { downAt = performance.now(); downPos = [e.clientX, e.clientY]; });
+canvas.addEventListener('pointerup', (e) => { if (performance.now() - downAt > 350 || Math.hypot(e.clientX - downPos[0], e.clientY - downPos[1]) > 6) return; const id = pickAt(e.clientX, e.clientY); if (id) focusPane(id); });
+canvas.addEventListener('dblclick', (e) => { const id = pickAt(e.clientX, e.clientY); if (id) openTerminal(id); });
+canvas.addEventListener('contextmenu', (e) => {
+  const id = pickAt(e.clientX, e.clientY); if (!id) return; e.preventDefault();
+  const p = findPane(id); if (!p || !p.agent) return;
+  // anchor the menu to the cursor
+  const anchor = { getBoundingClientRect: () => ({ right: e.clientX + 4, left: e.clientX, top: e.clientY, bottom: e.clientY }), classList: { add() {}, remove() {} } };
+  openAgentMenu(anchor, id);
+});
+
+// --------------------------------------------------------------- data source
+const DEMO = new URLSearchParams(location.search).has('demo');
+function connect() {
+  const es = new EventSource('/events');
+  es.onmessage = (ev) => { try { applyState(JSON.parse(ev.data)); } catch (err) { console.error(err); } };
+  es.onerror = () => { $('conn').className = 'dot off'; $('ver').textContent = 'reconnecting…'; };
+}
+function demoState(tick) {
+  const states = ['working', 'idle', 'blocked', 'working', 'done', 'working'];
+  const mk = (id, cwd, agent, i) => { const st = agent ? (i === 4 ? 'idle' : states[(i + Math.floor(tick / 5)) % states.length]) : 'unknown'; const k = Math.floor(tick / 2) + i; return ({ id, cwd, cwdName: cwd.split('/').pop(), agent, agent_status: st, focused: id === 'w2:p1', title: agent ? ['Refactor auth flow', 'Fix flaky test', 'Ship landing hero', 'Write migration', 'Review PR #42'][i % 5] : null, sessionId: `demo-${id}`,
+    activity: agent ? { lastTs: new Date(Date.now() - (i === 4 ? 90 : i === 1 ? 8 : 0) * 60000).toISOString(), toolCountInWindow: 40 + i * 30, toolTimes: Array.from({ length: 12 + i * 5 }, (_, j) => new Date(Date.now() - ((j * 37 + i * 11) % 30) * 60000).toISOString()), lastTool: { id: `t-${id}-${k}`, name: ['Edit', 'Read', 'Bash', 'Agent'][k % 4], category: ['write', 'read', 'run', 'agent'][k % 4], detail: ['login.tsx', 'schema.prisma', 'npm test', 'review diff'][k % 4], at: new Date(Date.now() - 4000).toISOString() }, pendingAgents: i === 1 && (tick % 12) < 6 && st === 'working' ? 2 : 0, lastUserPrompt: { text: ['make the login page split view', 'why is CI red?', 'add a hero shader', 'migrate users table'][Math.floor(tick / 9 + i) % 4], at: `p-${Math.floor(tick / 9)}` } } : null }); };
+  return { ts: Date.now(), herdr: { running: true, version: 'demo' }, agentKinds: ['claude', 'codex', 'gemini', 'copilot', 'cursor', 'amp', 'hermes', 'opencode'], startableKinds: ['claude', 'codex', 'gemini', 'cursor', 'amp', 'opencode'], focused: { pane: 'w2:p1' }, workspaces: [
+    { id: 'w1', label: 'screenagers-io', number: 1, focused: false, agent_status: 'unknown', tabs: [{ id: 'w1:t1', label: 'shells', number: 1, panes: [mk('w1:p1', '/x/screenagers-io', null, 0), mk('w1:p2', '/x/storefront', null, 1), mk('w1:p3', '/x/cms', null, 2), mk('w1:p4', '/x/api-server', null, 3)] }] },
+    { id: 'w2', label: 'storefront', number: 2, focused: true, agent_status: 'working', tabs: [{ id: 'w2:t1', label: 'claude', number: 1, panes: [mk('w2:p1', '/x/storefront', 'claude', 0), mk('w2:p2', '/x/cms', 'claude', 1)] }] },
+    { id: 'w3', label: 'screenagers-project', number: 3, focused: false, agent_status: 'idle', tabs: [{ id: 'w3:t1', label: '1', number: 1, panes: [mk('w3:p1', '/x/screenagers-project', 'claude', 2), mk('w3:p2', '/x/screenagers-project', 'codex', 3), mk('w3:p3', '/x/screenagers-project', 'claude', 4)] }] },
+  ] };
+}
+if (DEMO) { let tick = 0; applyState(demoState(tick)); setInterval(() => applyState(demoState(++tick)), 2500); } else connect();
+async function pollEasel() {
+  if (!office.easel || !easelPane) return;
+  const p = findPane(easelPane); const title = p ? (p.title || p.tabLabel || p.cwdName) : easelPane;
+  if (DEMO) { office.easel.draw(title, `$ npm test\n> vitest run\n ✓ auth/login.test.ts (12)\n ✓ cms/pages.test.ts (8)\n ✗ hero/shader.test.ts (1)\n   expected 0.5 to equal 0.25\n\nTests 20 passed, 1 failed\n❯ fix the failing shader test`); return; }
+  try { const r = await fetch(`/api/read?pane=${encodeURIComponent(easelPane)}&lines=24`); if (r.ok) office.easel.draw(title, await r.text()); } catch { /* keep last frame */ }
+}
+setInterval(pollEasel, EASEL_POLL_MS); setTimeout(pollEasel, 800);
+const HOUR_OVERRIDE = new URLSearchParams(location.search).get('hour');
+function tickTimeOfDay() { const now = new Date(); applyTimeOfDay(HOUR_OVERRIDE != null ? Number(HOUR_OVERRIDE) : now.getHours() + now.getMinutes() / 60); }
+setInterval(tickTimeOfDay, 30000);
+
+// --------------------------------------------------------------------- loop
+const clock = new THREE.Clock(); let tickHud = 0; let walkDt = 0; let todApplied = false;
+function frame() {
+  const raw = clock.getDelta(); const dt = Math.min(0.1, raw); walkDt = Math.min(0.3, raw); const t = clock.elapsedTime;
+  for (const b of banks.values()) b.update(dt);
+  for (const d of desks.values()) d.update(dt, t);
+  for (const a of agents.values()) a.tick(dt);
+  for (const c of window.__office ? window.__office.extras : []) c.update(dt); // harness-staged characters
+  world.tickLeaving(dt); office.update(dt, t); trackFollow(dt); if (!todApplied && office.paneMat) { todApplied = true; tickTimeOfDay(); }
+  controls.update(); if (aoMode && composer) composer.render(); else renderer.render(scene, camera);
+  tickHud += dt; if (tickHud > 3 && latest) { tickHud = 0; renderHud(latest); }
+  requestAnimationFrame(frame);
+}
+frame();
+window.__office = { agents, world, office, desks, banks, controls, ortho, persp, fitCamera, applyState, state: () => latest, THREE, scene, Character, makeGlyphSprite, makeTextSprite, TOOL_GLYPH, TOOL_LABEL, STATE, extras: [] };
+</script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+{
+  "name": "bullpen-office",
+  "version": "0.2.0",
+  "private": true,
+  "description": "A 3D voxel office that shows what the coding agents inside Herdr are doing right now (pixel-agents style, in three.js).",
+  "license": "MIT",
+  "homepage": "https://github.com/screenagers-io/bullpen#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/screenagers-io/bullpen.git"
+  },
+  "type": "module",
+  "bin": {
+    "bullpen": "bin/bullpen.mjs"
+  },
+  "main": "server.mjs",
+  "files": [
+    "bin/",
+    "server.mjs",
+    "public/",
+    "scripts/vendor.mjs",
+    "assets/Screenagers-logo.svg",
+    "README.md",
+    "LICENSE",
+    "install.sh",
+    "install.ps1"
+  ],
+  "scripts": {
+    "start": "node bin/bullpen.mjs --no-open",
+    "dev": "node bin/bullpen.mjs",
+    "vendor": "node scripts/vendor.mjs",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "keywords": [
+    "herdr",
+    "coding-agents",
+    "visualizer",
+    "three.js",
+    "voxel",
+    "pixel-agents",
+    "claude-code",
+    "codex"
+  ],
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  }
+}
