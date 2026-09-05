@@ -1658,9 +1658,25 @@ function openWorkspaceMenu(anchor, wsId) {
     { icon: '❐', label: 'Open in Herdr terminal', onClick: () => openInHerdr(panes[0] && panes[0].id) },
     { icon: '◎', label: 'Focus in Herdr', onClick: async () => { try { await post(`/api/focus?pane=${encodeURIComponent(panes[0] && panes[0].id)}`); toast(`focused ${ws.label}`); } catch (err) { toast(err.message); } } },
     { icon: '+', label: 'New agent here…', onClick: () => { openNewAgent(); const sel = $('naWs'); if (sel) sel.value = wsId; } },
+    { icon: '✎', label: 'Rename workspace…', onClick: () => openRenameWorkspace(wsId) },
     { sep: true },
     { icon: '✕', label: 'Close workspace…', danger: true, onClick: () => closeWorkspace(wsId) },
   ]);
+}
+function openRenameWorkspace(wsId) {
+  const ws = latest && latest.workspaces.find((w) => w.id === wsId); if (!ws) return;
+  openDialog('Rename workspace', `${ws.id} · ${ws.tabs.length} tab${ws.tabs.length === 1 ? '' : 's'}`, `
+    <div class="field"><label for="rwLabel">Label</label><input id="rwLabel" type="text" maxlength="40" value="${esc(ws.label)}" autocomplete="off" spellcheck="false"></div>`,
+  { save: 'Rename', onSave: async () => {
+      const label = $('rwLabel').value.trim(); if (!label) return dialogError('label cannot be empty');
+      if (label === ws.label) return closeDialog();
+      if (DEMO) { DEMO_LABELS[wsId] = label; ws.label = label; closeDialog(); renderHud(latest); toast(`demo: renamed to ${label}`); return; }
+      $('rnSave').disabled = true; dialogHint('renaming…');
+      await post(`/api/workspace/rename?workspace=${encodeURIComponent(wsId)}&label=${encodeURIComponent(label)}`);
+      closeDialog(); toast(`workspace renamed to ${label}`); feed(`workspace <b>${esc(ws.label)}</b> renamed to <b>${esc(label)}</b>`);
+    } });
+  const inp = $('rwLabel'); setTimeout(() => { inp.focus(); inp.select(); }, 0);
+  dialogHint('shown on the desk bank sign and in Herdr\'s tab bar');
 }
 
 // ---- figure thumbnails for the avatar picker, rendered once and cached
@@ -1823,14 +1839,15 @@ function connect() {
   es.onmessage = (ev) => { try { applyState(JSON.parse(ev.data)); } catch (err) { console.error(err); } };
   es.onerror = () => { $('conn').className = 'dot off'; $('ver').textContent = 'reconnecting…'; };
 }
+const DEMO_LABELS = {}; // demo renames survive the per-tick regeneration
 function demoState(tick) {
   const states = ['working', 'idle', 'blocked', 'working', 'done', 'working'];
   const mk = (id, cwd, agent, i) => { const st = agent ? (i === 4 ? 'idle' : states[(i + Math.floor(tick / 5)) % states.length]) : 'unknown'; const k = Math.floor(tick / 2) + i; return ({ id, cwd, cwdName: cwd.split('/').pop(), agent, agent_status: st, focused: id === 'w2:p1', title: agent ? ['Refactor auth flow', 'Fix flaky test', 'Ship landing hero', 'Write migration', 'Review PR #42'][i % 5] : null, sessionId: `demo-${id}`,
     activity: agent ? { lastTs: new Date(Date.now() - (i === 4 ? 90 : i === 1 ? 8 : 0) * 60000).toISOString(), toolCountInWindow: 40 + i * 30, toolTimes: Array.from({ length: 12 + i * 5 }, (_, j) => new Date(Date.now() - ((j * 37 + i * 11) % 30) * 60000).toISOString()), lastTool: { id: `t-${id}-${k}`, name: ['Edit', 'Read', 'Bash', 'Agent'][k % 4], category: ['write', 'read', 'run', 'agent'][k % 4], detail: ['login.tsx', 'schema.prisma', 'npm test', 'review diff'][k % 4], at: new Date(Date.now() - 4000).toISOString() }, pendingAgents: i === 1 && (tick % 12) < 6 && st === 'working' ? 2 : 0, lastUserPrompt: { text: ['make the login page split view', 'why is CI red?', 'add a hero shader', 'migrate users table'][Math.floor(tick / 9 + i) % 4], at: `p-${Math.floor(tick / 9)}` } } : null }); };
   return { ts: Date.now(), herdr: { running: true, version: 'demo' }, agentKinds: ['claude', 'codex', 'gemini', 'copilot', 'cursor', 'amp', 'hermes', 'opencode'], startableKinds: ['claude', 'codex', 'gemini', 'cursor', 'amp', 'opencode'], focused: { pane: 'w2:p1' }, workspaces: [
-    { id: 'w1', label: 'screenagers-io', number: 1, focused: false, agent_status: 'unknown', tabs: [{ id: 'w1:t1', label: 'shells', number: 1, panes: [mk('w1:p1', '/x/screenagers-io', null, 0), mk('w1:p2', '/x/storefront', null, 1), mk('w1:p3', '/x/cms', null, 2), mk('w1:p4', '/x/api-server', null, 3)] }] },
-    { id: 'w2', label: 'storefront', number: 2, focused: true, agent_status: 'working', tabs: [{ id: 'w2:t1', label: 'claude', number: 1, panes: [mk('w2:p1', '/x/storefront', 'claude', 0), mk('w2:p2', '/x/cms', 'claude', 1)] }] },
-    { id: 'w3', label: 'screenagers-project', number: 3, focused: false, agent_status: 'idle', tabs: [{ id: 'w3:t1', label: '1', number: 1, panes: [mk('w3:p1', '/x/screenagers-project', 'claude', 2), mk('w3:p2', '/x/screenagers-project', 'codex', 3), mk('w3:p3', '/x/screenagers-project', 'claude', 4)] }] },
+    { id: 'w1', label: DEMO_LABELS.w1 || 'screenagers-io', number: 1, focused: false, agent_status: 'unknown', tabs: [{ id: 'w1:t1', label: 'shells', number: 1, panes: [mk('w1:p1', '/x/screenagers-io', null, 0), mk('w1:p2', '/x/storefront', null, 1), mk('w1:p3', '/x/cms', null, 2), mk('w1:p4', '/x/api-server', null, 3)] }] },
+    { id: 'w2', label: DEMO_LABELS.w2 || 'storefront', number: 2, focused: true, agent_status: 'working', tabs: [{ id: 'w2:t1', label: 'claude', number: 1, panes: [mk('w2:p1', '/x/storefront', 'claude', 0), mk('w2:p2', '/x/cms', 'claude', 1)] }] },
+    { id: 'w3', label: DEMO_LABELS.w3 || 'screenagers-project', number: 3, focused: false, agent_status: 'idle', tabs: [{ id: 'w3:t1', label: '1', number: 1, panes: [mk('w3:p1', '/x/screenagers-project', 'claude', 2), mk('w3:p2', '/x/screenagers-project', 'codex', 3), mk('w3:p3', '/x/screenagers-project', 'claude', 4)] }] },
   ] };
 }
 if (DEMO) { let tick = 0; applyState(demoState(tick)); setInterval(() => applyState(demoState(++tick)), 2500); } else connect();

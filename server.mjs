@@ -657,6 +657,18 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { ok: true, result });
       } catch (err) { return sendJson(res, 400, { error: String(err.message || err) }); }
     }
+    if (url.pathname === '/api/workspace/rename' && req.method === 'POST') {
+      const wsId = url.searchParams.get('workspace') || '';
+      const label = (url.searchParams.get('label') || '').trim();
+      if (!/^w[0-9a-z]+$/i.test(wsId)) return sendJson(res, 400, { error: 'bad workspace id' });
+      if (!label) return sendJson(res, 400, { error: 'label is required' });
+      if (label.length > 40) return sendJson(res, 400, { error: 'label must be 40 characters or fewer' });
+      try {
+        const result = await herdr(['workspace', 'rename', wsId, label]);
+        setTimeout(poll, 150);
+        return sendJson(res, 200, { ok: true, result });
+      } catch (err) { return sendJson(res, 400, { error: String(err.message || err) }); }
+    }
     if (url.pathname === '/api/agent/new' && req.method === 'POST') {
       const wsId = url.searchParams.get('workspace') || '';
       const kind = url.searchParams.get('kind') || '';

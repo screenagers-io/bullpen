@@ -75,7 +75,7 @@ Per-item actions live in a **⋯ menu** on each row of the side list, so nothing
 - **Shell ⋯** on a pane with no agent: focus, look at it, read its terminal, **start an agent here** in that existing shell, and **close shell**.
 
 Every menu starts with **Open in Herdr terminal**: it focuses that pane in Herdr and brings the terminal window running the Herdr TUI to the front. If nothing is attached to the session, it starts Herdr in a new Terminal window, which reattaches to the session already running.
-- **Workspace ⋯** on the heading: focus it, add an agent to it, and **close workspace**.
+- **Workspace ⋯** on the heading: focus it, add an agent to it, **rename it** (the label on the desk-bank sign and in Herdr's tab bar), and **close workspace**.
 
 Closing an agent ends its session and its Herdr pane, and closes the tab too if that was the tab's last pane. Closing a workspace lists every agent that would be ended, and requires typing the workspace name when any are running.
 
