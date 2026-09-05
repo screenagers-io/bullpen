@@ -1288,7 +1288,7 @@ class Agent extends Walker {
       this.helpers.push(h); feed(`<b>${name}</b> called in a sub-agent`);
     }
     while (this.helpers.length > n) { const h = this.helpers.pop(); world.leaving.push(h); const d = office.spots.door; h.routeTo({ id: 'door', x: d.x, z: d.z, yaw: Math.PI / 2, sit: false, aisleZ: d.z }, this.desk.aisleZ); }
-    if (this.first) { this.first = false; this.state = st; this.pendingState = st; const s = this.deskSeat(); this.placeAt(s.x, s.z, 0); this.spot = s; this.snapToSpot(); }
+    if (this.first) { this.first = false; this.state = st; this.pendingState = st; if (st === 'idle') this.idleAt = this.char.t; /* already idle when first seen: the desk timer starts now */ const s = this.deskSeat(); this.placeAt(s.x, s.z, 0); this.spot = s; this.snapToSpot(); }
   }
   tick(dt) {
     this.dwell += dt;
