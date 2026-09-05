@@ -91,7 +91,15 @@ function herdrMissingMessage() {
 function herdrError(err, args) {
   // execFile rejects with "Command failed: …" and buries the reason in stdout/stderr
   const out = String(err.stdout || '').trim(), errText = String(err.stderr || '').trim();
-  try { const j = JSON.parse(out); if (j.error) return `${j.error.message || JSON.stringify(j.error)}${j.error.code ? ` (${j.error.code})` : ''}`; } catch { /* not json */ }
+  for (const text of [out, errText]) {
+    try {
+      const j = JSON.parse(text);
+      if (j.error) {
+        if (j.error.code === 'server_not_running') return 'Herdr is not running. Start it from Bullpen, or run `herdr` in a terminal.';
+        return `${j.error.message || JSON.stringify(j.error)}${j.error.code ? ` (${j.error.code})` : ''}`;
+      }
+    } catch { /* not json */ }
+  }
   if (errText) return errText.split('\n').filter(Boolean).slice(-3).join(' · ');
   if (out) return out.split('\n').filter(Boolean).slice(-3).join(' · ');
   if (err.killed || /ETIMEDOUT|timed out/i.test(String(err.message))) return `herdr ${args.slice(0, 2).join(' ')} timed out`;
@@ -265,6 +273,48 @@ async function readActivity(sessionId, cwd) {
 
 // ------------------------------------------------- opening the real Herdr TUI
 
+// ------------------------------------------------------- native folder picker
+// The browser cannot hand us a real path from <input type=file>, but the server runs on the same
+// machine, so it can open the OS folder dialog itself and return the chosen path.
+let pickerOpen = false;
+async function pickFolder() {
+  const title = 'Choose the folder for the new Herdr workspace';
+  if (IS_MAC) {
+    const lines = ['tell application "System Events"', 'activate', `set f to choose folder with prompt "${title}"`, 'end tell', 'POSIX path of f'];
+    try { const { stdout } = await run('osascript', lines.flatMap((l) => ['-e', l]), { timeout: 600000 }); return stdout.trim().replace(/\/$/, '') || null; }
+    catch (err) { if (/-128|cancel/i.test(`${err.stderr || ''} ${err.message || ''}`)) return null; throw new Error(herdrError(err, [])); }
+  }
+  if (IS_WIN) {
+    const ps = `Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description = '${title}'; $d.ShowNewFolderButton = $true; $owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true; ShowInTaskbar = $false; Opacity = 0 }; if ($d.ShowDialog($owner) -eq 'OK') { Write-Output $d.SelectedPath }`;
+    const { stdout } = await run('powershell', ['-NoProfile', '-NonInteractive', '-STA', '-Command', ps], { timeout: 600000, windowsHide: true });
+    return stdout.trim() || null;
+  }
+  const zenity = await findInDirs('zenity', pathDirs());
+  if (zenity) {
+    try { const { stdout } = await run(zenity, ['--file-selection', '--directory', `--title=${title}`], { timeout: 600000 }); return stdout.trim() || null; }
+    catch (err) { if (err.code === 1) return null; throw err; }
+  }
+  const kdialog = await findInDirs('kdialog', pathDirs());
+  if (kdialog) {
+    try { const { stdout } = await run(kdialog, ['--getexistingdirectory', HOME, '--title', title], { timeout: 600000 }); return stdout.trim() || null; }
+    catch (err) { if (err.code === 1) return null; throw err; }
+  }
+  throw new Error('no folder dialog available here (install zenity or kdialog); type the path instead');
+}
+
+// `herdr server` runs Herdr headless. Bullpen can start it when nothing is running yet, so the
+// office works before the user has ever opened the Herdr TUI; `herdr` in a terminal then attaches.
+async function herdrAlive() { try { await herdr(['api', 'snapshot'], { timeout: 4000 }); return true; } catch { return false; } }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function startHerdrServer() {
+  if (await herdrAlive()) return { already: true };
+  const bin = await herdrBinPath();
+  if (!bin) throw new Error(herdrMissingMessage());
+  spawnDetached(bin, ['server'], { windowsHide: true });
+  for (let i = 0; i < 30; i++) { await sleep(500); if (await herdrAlive()) return { started: true }; }
+  throw new Error('herdr server did not come up within 15 seconds; run `herdr` in a terminal to see why');
+}
+
 // ---------------------------------------------------- terminal integration
 // "Open in Herdr terminal" needs to know whether a Herdr TUI is attached and, on macOS, which .app hosts it.
 
@@ -335,6 +385,7 @@ async function launchHerdrTerminal() {
 }
 function spawnDetached(cmd, args, extra = {}) {
   const child = spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: false, ...extra });
+  // callers pass windowsHide: true for background daemons such as `herdr server`
   child.on('error', () => { /* reported by the caller's fallback */ });
   child.unref();
 }
@@ -720,6 +771,17 @@ const server = http.createServer(async (req, res) => {
         setTimeout(poll, 250);
         return sendJson(res, 200, { ok: true, closed: wsId, result: r });
       } catch (err) { return sendJson(res, 400, { error: String(err.message || err) }); }
+    }
+    if (url.pathname === '/api/pick-folder' && req.method === 'POST') {
+      if (pickerOpen) return sendJson(res, 409, { error: 'a folder dialog is already open' });
+      pickerOpen = true;
+      try { const dir = await pickFolder(); return sendJson(res, 200, dir ? { ok: true, path: dir } : { ok: true, cancelled: true }); }
+      catch (err) { return sendJson(res, 400, { error: String(err.message || err) }); }
+      finally { pickerOpen = false; }
+    }
+    if (url.pathname === '/api/herdr/start' && req.method === 'POST') {
+      try { const r = await startHerdrServer(); setTimeout(poll, 100); return sendJson(res, 200, { ok: true, ...r }); }
+      catch (err) { return sendJson(res, 500, { error: String(err.message || err) }); }
     }
     if (url.pathname === '/api/open-terminal' && req.method === 'POST') {
       const pane = url.searchParams.get('pane') || '';

@@ -1449,8 +1449,9 @@ function renderHud(state) {
   }
   if (!state.workspaces.length) html = state.herdr.running
     ? `<div style="padding:14px;color:var(--muted);line-height:1.6">Herdr is running with no workspaces open.<br><br>Use <b style="color:var(--text)">+ Workspace</b> below to open a folder, then <b style="color:var(--text)">+ Agent</b> to put someone to work in it.</div>`
-    : `<div style="padding:14px;color:var(--muted)">Cannot reach Herdr.<br><br>${esc(state.herdr.error || 'Is the herdr server running?')}</div>`;
+    : `<div style="padding:14px;color:var(--muted);line-height:1.6">Cannot reach Herdr.<br><br>${esc(state.herdr.error || 'Is the herdr server running?')}<br><br><button type="button" class="btn" id="pStartHerdr">Start Herdr…</button></div>`;
   panel.innerHTML = html;
+  const sh = $('pStartHerdr'); if (sh) sh.onclick = openHerdrDown;
 }
 $('panel').addEventListener('click', (e) => {
   const am = e.target.closest('[data-menu]'); if (am) { e.stopPropagation(); openAgentMenu(am, am.dataset.menu); return; }
@@ -1486,6 +1487,7 @@ function agentPanes() { return latest ? latest.workspaces.flatMap((w) => w.tabs.
 
 // ---- + Agent
 function openNewAgent(intoPane) {
+  if (herdrDown()) return openHerdrDown();
   if (!latest) return toast('no session yet');
   const kinds = (latest.startableKinds && latest.startableKinds.length ? latest.startableKinds : latest.allKinds) || ['claude'];
   const ws = latest.workspaces;
@@ -1517,9 +1519,10 @@ function openNewAgent(intoPane) {
 
 // ---- + Workspace
 function openNewWorkspace() {
+  if (herdrDown()) return openHerdrDown();
   const seen = [...new Set((latest ? latest.workspaces.flatMap((w) => w.tabs.flatMap((t) => t.panes.map((p) => p.cwd))) : []))];
   openDialog('New workspace', 'a Herdr workspace rooted at a folder', `
-    <div class="field"><label for="nwCwd">Folder</label><input id="nwCwd" type="text" list="nwList" placeholder="~/Development/my-project" autocomplete="off" spellcheck="false"><datalist id="nwList">${seen.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></div>
+    <div class="field"><label for="nwCwd">Folder</label><div style="display:flex;gap:8px;align-items:stretch"><input id="nwCwd" type="text" list="nwList" placeholder="~/Development/my-project" autocomplete="off" spellcheck="false" style="flex:1;min-width:0"><button type="button" id="nwBrowse" class="btn" title="Pick the folder with the system dialog" style="white-space:nowrap">Browse…</button></div><datalist id="nwList">${seen.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></div>
     <div class="field"><label for="nwLabel">Label (optional)</label><input id="nwLabel" type="text" maxlength="40" placeholder="defaults to the folder name" autocomplete="off"></div>`,
   { save: 'Create', onSave: async () => {
       const cwd = $('nwCwd').value.trim(); if (!cwd) return dialogError('pick a folder');
@@ -1532,9 +1535,35 @@ function openNewWorkspace() {
     const v = inp.value; if (!v.endsWith('/')) return;
     try { const r = await fetch(`/api/dirs?path=${encodeURIComponent(v)}`); const j = await r.json(); if (j.dirs) { $('nwList').innerHTML = j.dirs.map((d) => `<option value="${esc(d)}">`).join(''); dialogHint(`${j.dirs.length} folders in ${j.path}`); } } catch { /* ignore */ }
   });
+  $('nwBrowse').onclick = async () => {
+    if (DEMO) return dialogHint('demo: the folder dialog opens on the machine running Bullpen');
+    const b = $('nwBrowse'); b.disabled = true; dialogHint('a folder dialog is open on this machine…');
+    try {
+      const r = await post('/api/pick-folder');
+      if (r.path) { inp.value = r.path; if (!$('nwLabel').value) $('nwLabel').placeholder = r.path.split(/[\\/]/).filter(Boolean).pop() || 'defaults to the folder name'; dialogHint('folder picked; Create when ready'); }
+      else dialogHint('no folder picked');
+    } catch (err) { dialogError(err.message); }
+    b.disabled = false;
+  };
   setTimeout(() => inp.focus(), 0);
-  dialogHint('type a path; end it with / to list subfolders');
+  dialogHint('type a path (end it with / to list subfolders), or Browse…');
 }
+
+// ---- Herdr not running
+function openHerdrDown() {
+  const why = latest && latest.herdr && latest.herdr.error ? esc(latest.herdr.error) : 'no Herdr server is reachable on this machine';
+  openDialog('Herdr is not running', 'Bullpen needs a running Herdr session', `
+    <div style="color:var(--muted);line-height:1.6;font-size:12px">${why}<br><br>
+    <b style="color:var(--text)">Start Herdr</b> launches its server in the background so you can open workspaces and agents from here right away. Run <code>herdr</code> in any terminal later to see the same session as a terminal UI.<br>
+    <b style="color:var(--text)">Open terminal</b> opens a terminal window running <code>herdr</code> instead.</div>`,
+  { save: 'Start Herdr', extra: { label: 'Open terminal', onClick: async () => { try { dialogHint('opening a terminal…'); const r = await post('/api/open-terminal'); dialogHint(`opened ${r.app || 'a terminal'}; waiting for Herdr…`); } catch (err) { dialogError(err.message); } } },
+    onSave: async () => {
+      $('rnSave').disabled = true; dialogHint('starting the herdr server…');
+      const r = await post('/api/herdr/start');
+      closeDialog(); toast(r.already ? 'Herdr is already running' : 'Herdr started'); feed('<b>Herdr</b> server started from Bullpen');
+    } });
+}
+const herdrDown = () => !DEMO && latest && latest.herdr && !latest.herdr.running;
 
 // ---- Prompt
 function openPrompt(paneId) {

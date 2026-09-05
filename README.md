@@ -63,7 +63,8 @@ Top-right buttons: **Orbit** auto-rotates, **Fit** resets the camera, **List** h
 The bar along the bottom does real work in Herdr, not just in the view:
 
 - **+ Agent** starts a coding agent. The kind list shows only agent CLIs actually installed on this machine, found by checking your login shell's PATH against the kinds Herdr can launch. Pick the kind, the workspace, an optional name, and whether it gets its own tab or splits an existing pane. The server creates the pane, then runs `herdr agent start` in it.
-- **+ Workspace** creates a Herdr workspace from a folder. Type a path and end it with `/` to list subfolders as suggestions.
+- **+ Workspace** creates a Herdr workspace from a folder. **Browse…** opens the system folder dialog (Finder, Explorer, or zenity/kdialog on Linux) on the machine running Bullpen; or type a path and end it with `/` to list subfolders as suggestions.
+- If Herdr is not running yet, both buttons and the side panel offer **Start Herdr**, which launches `herdr server` headless in the background so workspaces and agents can be created straight away; **Open terminal** opens a terminal running `herdr` instead. Run `herdr` in any terminal later to attach to the same session.
 - **Customize** restyles the office: Warm oak, Nordic, Walnut, Studio, Sakura, Midnight, Screenagers (black and acid lime, after screenagers.io) or Linen (warm neutral). The choice is remembered in this browser.
 - **Blocked (n)** appears only when agents are waiting on you and jumps the camera to the next one. `b` does the same.
 - **?** opens the legend and keyboard shortcuts.
