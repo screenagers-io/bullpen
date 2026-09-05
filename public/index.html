@@ -292,6 +292,8 @@ const THEMES = {
   studio:  { name: 'Studio',     planks: ['#b4b2ad', '#bcbab5', '#adaba6', '#c2c0bb', '#b8b6b1'], wall: 0xe4e2dd, trim: 0xffffff, plinth: 0x6d6b67, backdrop: 0x7f8c99 },
   sakura:  { name: 'Sakura',     planks: ['#c9a08a', '#d3ab94', '#c29a84', '#dab49d', '#cda58e'], wall: 0xf0e2e2, trim: 0xfff8f6, plinth: 0x8d6a5c, backdrop: 0xe8a0b4 },
   midnight:{ name: 'Midnight',   planks: ['#3d4250', '#454a58', '#393e4b', '#4b5060', '#414654'], wall: 0x4a5062, trim: 0x9aa3b8, plinth: 0x23262f, backdrop: 0x2b3040 },
+  screenagers: { name: 'Screenagers', planks: ['#cfc8b6', '#d6cfbd', '#c8c1af', '#dbd4c2', '#d2cbb9'], wall: 0xeef4ef, trim: 0xffffff, plinth: 0x136d6c, backdrop: 0x1eb4b2 }, // brand teal from the logo gradient
+  linen:   { name: 'Linen',      planks: ['#c4b8a6', '#cbbfad', '#bdb19f', '#d1c5b3', '#c7bba9'], wall: 0xe9e5de, trim: 0xfbfaf7, plinth: 0x7d7268, backdrop: 0xb8b0a4 }, // warm neutral
 };
 let themeKey = (() => { try { return localStorage.getItem('herdr-office-theme') || 'oak'; } catch { return 'oak'; } })();
 if (!THEMES[themeKey]) themeKey = 'oak';
